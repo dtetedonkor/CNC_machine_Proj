@@ -1,48 +1,49 @@
-# Parameters
+# Compiler and Flags
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -g
-TEST_DIR = tests
-SRC_DIR = src
-BUILD_DIR = $(TEST_DIR)/build
-BIN_DIR = $(TEST_DIR)/bin
+
+# Directories
+SRC_DIR = ../src
+TEST_DIR := $(CURDIR)
+BUILD_DIR = build
+BIN_DIR = bin
+
 TEST_TARGET = $(BIN_DIR)/test_runner
 
-# Source files for tests and the application (mock the main executable)
-SRCS = $(wildcard $(SRC_DIR)/*.c $(TEST_DIR)/*.c)          # All source files
-OBJS = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(filter $(SRC_DIR)/%.c,$(SRCS))) \
-       $(patsubst $(TEST_DIR)/%.c, $(BUILD_DIR)/%.o, $(filter $(TEST_DIR)/%.c,$(SRCS)))
+# Source / objects
+OBJS = $(BUILD_DIR)/parser.o $(BUILD_DIR)/input_test.o
 
 # Default target
 all: dirs $(TEST_TARGET)
 
-# Link and build the test runner target
+# Link test runner  (THIS WAS MISSING)
 $(TEST_TARGET): $(OBJS)
 	@echo "Linking $@..."
 	$(CC) $(CFLAGS) -o $@ $^
 
-# Compile object files
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+# Compile core source
+$(BUILD_DIR)/parser.o: $(SRC_DIR)/parser.c
 	@mkdir -p $(BUILD_DIR)
-	@echo "Compiling $< (source)..."
+	@echo "Compiling $< -> $@..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/%.o: $(TEST_DIR)/%.c
+# Compile test source
+$(BUILD_DIR)/input_test.o: $(TEST_DIR)/input_test.c
 	@mkdir -p $(BUILD_DIR)
-	@echo "Compiling $< (test)..."
+	@echo "Compiling $< -> $@..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Create build directories
+# Ensure dirs exist
 dirs:
-	@mkdir -p $(BUILD_DIR) $(BIN_DIR)
+	@mkdir -p $(BUILD_DIR)
+	@mkdir -p $(BIN_DIR)
 
-# Test execution
+clean:
+	@echo "Cleaning up..."
+	@rm -rf $(BUILD_DIR) $(BIN_DIR)
+
 run: all
 	@echo "Running tests..."
-	$(TEST_TARGET)
-
-# Clean files
-clean:
-	@echo "Cleaning up test files..."
-	@rm -rf $(BUILD_DIR) $(BIN_DIR)
+	./$(TEST_TARGET)
 
 .PHONY: all clean dirs run

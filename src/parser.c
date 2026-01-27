@@ -120,27 +120,35 @@ int execute_command(CommandType type, float x, float y, float f) {
             machineState.spindleOn = 0;
             return 0;
         default:
-            set_error_message("Unknown command.");
+            set_error_message("Unknown command");
             return -1;
     }
 }
 
 // --- Main Parsing Function ---
 int parse_gcode_command(const char *command) {
-    char cmdCopy[256];
-    strncpy(cmdCopy, command, sizeof(cmdCopy) - 1);
-    cmdCopy[255] = '\0';
-    trim(cmdCopy);
+    CommandType type = parse_command_type(command);  // Determine the command type
 
-    if (strlen(cmdCopy) == 0) {
-        set_error_message("Empty command.");
-        return -1;
+    float x = -1, y = -1, f = -1;  // Default parameters (-1 means unspecified, optional)
+    parse_parameters(command, &x, &y, &f);
+
+    switch (type) {
+        case CMD_MOVE_LINEAR:
+            return execute_move(x, y, f);
+        case CMD_MOVE_RAPID:
+            return execute_move(x, y, 1000);  // Rapid move feed rate is defaulted
+        case CMD_SPINDLE_ON:
+            machineState.spindleOn = 1;
+            return 0;
+        case CMD_SPINDLE_OFF:
+            machineState.spindleOn = 0;
+            return 0;
+        case CMD_UNKNOWN:
+        default:
+            // Set error for unknown command
+            set_error_message("Unknown command");
+            return -1;  // Error code for invalid command
     }
-
-    CommandType type = parse_command_type(cmdCopy);
-    float x, y, f;
-    parse_parameters(cmdCopy, &x, &y, &f);
-    return execute_command(type, x, y, f);
 }
 
 // --- Machine State Query Functions ---
