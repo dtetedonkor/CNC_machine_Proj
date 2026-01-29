@@ -1,4 +1,5 @@
 #include "planner.h"
+#include "protocol.h"
 #include <string.h>
 
 // Initialize a planner block with default values
