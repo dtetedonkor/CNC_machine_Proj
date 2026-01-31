@@ -31,8 +31,25 @@ typedef struct {
     
 } planner_block_t;
 
-// Function declarations
+// Queue structure for managing planner blocks
+typedef struct {
+    planner_block_t *head;    // Pointer to the front of the queue
+    planner_block_t *tail;    // Pointer to the back of the queue
+    uint32_t size;            // Current number of blocks in the queue
+    uint32_t capacity;        // Maximum number of blocks allowed in the queue
+} planner_queue_t;
+
+// Function declarations - Block operations
 void planner_block_init(planner_block_t *block);
 int planner_block_validate(const planner_block_t *block);
+
+// Function declarations - Queue operations
+void planner_queue_init(planner_queue_t *queue, uint32_t capacity);
+int planner_enqueue(planner_queue_t *queue, planner_block_t *block);
+planner_block_t* planner_dequeue(planner_queue_t *queue);
+planner_block_t* planner_peek_front(const planner_queue_t *queue);
+planner_block_t* planner_peek_back(const planner_queue_t *queue);
+int planner_is_empty(const planner_queue_t *queue);
+void planner_queue_clear(planner_queue_t *queue);
 
 #endif // PLANNER_H

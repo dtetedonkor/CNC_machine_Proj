@@ -64,3 +64,106 @@ int planner_block_validate(const planner_block_t *block) {
     
     return 1; // Valid block
 }
+
+// Initialize a planner queue with given capacity
+void planner_queue_init(planner_queue_t *queue, uint32_t capacity) {
+    if (queue == NULL) {
+        return;
+    }
+    
+    queue->head = NULL;
+    queue->tail = NULL;
+    queue->size = 0;
+    queue->capacity = capacity;
+}
+
+// Add a new block to the end of the queue
+// Returns 1 on success, 0 on failure (queue full or NULL parameters)
+int planner_enqueue(planner_queue_t *queue, planner_block_t *block) {
+    if (queue == NULL || block == NULL) {
+        return 0;
+    }
+    
+    // Check if queue is full
+    if (queue->capacity > 0 && queue->size >= queue->capacity) {
+        return 0; // Queue is full
+    }
+    
+    // Clear the next pointer of the new block
+    block->next = NULL;
+    
+    if (queue->tail == NULL) {
+        // Queue is empty, set both head and tail to the new block
+        queue->head = block;
+        queue->tail = block;
+    } else {
+        // Add block to the end of the queue
+        queue->tail->next = block;
+        queue->tail = block;
+    }
+    
+    queue->size++;
+    return 1;
+}
+
+// Remove and return the block at the front of the queue
+// Returns pointer to the block on success, NULL if queue is empty
+planner_block_t* planner_dequeue(planner_queue_t *queue) {
+    if (queue == NULL || queue->head == NULL) {
+        return NULL;
+    }
+    
+    planner_block_t *block = queue->head;
+    queue->head = queue->head->next;
+    
+    if (queue->head == NULL) {
+        // Queue is now empty, update tail
+        queue->tail = NULL;
+    }
+    
+    queue->size--;
+    block->next = NULL; // Clear the next pointer
+    return block;
+}
+
+// Peek at the block at the front of the queue without removing it
+// Returns pointer to the front block, NULL if queue is empty
+planner_block_t* planner_peek_front(const planner_queue_t *queue) {
+    if (queue == NULL) {
+        return NULL;
+    }
+    
+    return queue->head;
+}
+
+// Peek at the block at the back of the queue without removing it
+// Returns pointer to the back block, NULL if queue is empty
+planner_block_t* planner_peek_back(const planner_queue_t *queue) {
+    if (queue == NULL) {
+        return NULL;
+    }
+    
+    return queue->tail;
+}
+
+// Check if the queue is empty
+// Returns 1 if empty, 0 if not empty or NULL queue
+int planner_is_empty(const planner_queue_t *queue) {
+    if (queue == NULL) {
+        return 1;
+    }
+    
+    return queue->size == 0;
+}
+
+// Clear the queue, removing all blocks
+// Note: This does not free the blocks themselves, only removes them from the queue
+void planner_queue_clear(planner_queue_t *queue) {
+    if (queue == NULL) {
+        return;
+    }
+    
+    queue->head = NULL;
+    queue->tail = NULL;
+    queue->size = 0;
+}
