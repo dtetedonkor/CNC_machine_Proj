@@ -1,7 +1,6 @@
 #include "planner.h"
 #include "protocol.h"
 #include <string.h>
-#include <stdlib.h>
 
 // Initialize a planner block with default values
 void planner_block_init(planner_block_t *block) {
@@ -115,7 +114,7 @@ planner_block_t* planner_dequeue(planner_queue_t *queue) {
     }
     
     planner_block_t *block = queue->head;
-    queue->head = (planner_block_t*)queue->head->next;
+    queue->head = queue->head->next;
     
     if (queue->head == NULL) {
         // Queue is now empty, update tail
