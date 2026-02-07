@@ -299,7 +299,8 @@ void test_arc_cw_ij() {
     /* Move to start position */
     assert(gcode_process_line(&gc, "G00 X10 Y0") == GCODE_OK);
     
-    /* Quarter-circle CW arc from (10,0) to (0,10) with center at (0,0)
+    /* CW arc from (10,0) to (0,10) with center at (0,0)
+     * This traverses 270 degrees clockwise (3/4 circle).
      * I = 0 - 10 = -10, J = 0 - 0 = 0 */
     gcode_status_t status = gcode_process_line(&gc, "G02 X0 Y10 I-10 J0 F300");
     assert(status == GCODE_OK);

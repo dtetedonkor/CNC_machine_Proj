@@ -11,6 +11,11 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+/* Maximum number of segments per arc (sanity limit) */
+#ifndef ARC_MAX_SEGMENTS
+#define ARC_MAX_SEGMENTS 10000
+#endif
+
 /* ----------------------------- I/J center-offset arc ----------------------------- */
 
 bool arc_generate_ij(float start_x, float start_y,
@@ -62,7 +67,7 @@ bool arc_generate_ij(float start_x, float start_y,
     float arc_length = radius * angular_travel;
     int num_segments = (int)(arc_length / ARC_SEGMENT_LEN_MM);
     if (num_segments < 1) num_segments = 1;
-    if (num_segments > 10000) num_segments = 10000; /* sanity clamp */
+    if (num_segments > ARC_MAX_SEGMENTS) num_segments = ARC_MAX_SEGMENTS;
 
     /* Angular step per segment */
     float theta_step = angular_travel / (float)num_segments;
