@@ -12,15 +12,17 @@ TEST_TARGET = $(BIN_DIR)/test_runner
 PLANNER_TEST_TARGET = $(BIN_DIR)/planner_test_runner
 GCODE_TEST_TARGET = $(BIN_DIR)/gcode_test_runner
 STEPPER_TEST_TARGET = $(BIN_DIR)/stepper_test_runner
+CLI_TEST_TARGET = $(BIN_DIR)/terminal_cli_test_runner
 
 # Source / objects
 OBJS = $(BUILD_DIR)/parser.o $(BUILD_DIR)/input_test.o
 PLANNER_OBJS = $(BUILD_DIR)/planner.o $(BUILD_DIR)/planner_test.o
 GCODE_OBJS = $(BUILD_DIR)/gcode.o $(BUILD_DIR)/arc.o $(BUILD_DIR)/kinematics.o $(BUILD_DIR)/gcode_test.o
 STEPPER_OBJS = $(BUILD_DIR)/stepper.o $(BUILD_DIR)/planner.o $(BUILD_DIR)/stepper_test.o
+CLI_OBJS = $(BUILD_DIR)/terminal_cli.o $(BUILD_DIR)/kin_corexy.o $(BUILD_DIR)/gcode.o $(BUILD_DIR)/arc.o $(BUILD_DIR)/kinematics.o $(BUILD_DIR)/terminal_cli_test.o
 
 # Default target
-all: dirs $(TEST_TARGET) $(PLANNER_TEST_TARGET) $(GCODE_TEST_TARGET) $(STEPPER_TEST_TARGET)
+all: dirs $(TEST_TARGET) $(PLANNER_TEST_TARGET) $(GCODE_TEST_TARGET) $(STEPPER_TEST_TARGET) $(CLI_TEST_TARGET)
 
 # Link test runner  (THIS WAS MISSING)
 $(TEST_TARGET): $(OBJS)
@@ -39,6 +41,11 @@ $(GCODE_TEST_TARGET): $(GCODE_OBJS)
 
 # Link stepper test runner
 $(STEPPER_TEST_TARGET): $(STEPPER_OBJS)
+	@echo "Linking $@..."
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+# Link terminal CLI test runner
+$(CLI_TEST_TARGET): $(CLI_OBJS)
 	@echo "Linking $@..."
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
@@ -72,6 +79,18 @@ $(BUILD_DIR)/gcode.o: $(SRC_DIR)/gcode.c $(SRC_DIR)/gcode.h
 	@echo "Compiling $< -> $@..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Compile terminal CLI source
+$(BUILD_DIR)/terminal_cli.o: $(SRC_DIR)/terminal_cli.c $(SRC_DIR)/terminal_cli.h
+	@mkdir -p $(BUILD_DIR)
+	@echo "Compiling $< -> $@..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile corexy kinematics source
+$(BUILD_DIR)/kin_corexy.o: $(SRC_DIR)/kin_corexy.c $(SRC_DIR)/kin_corexy.h
+	@mkdir -p $(BUILD_DIR)
+	@echo "Compiling $< -> $@..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Compile arc source
 $(BUILD_DIR)/arc.o: $(SRC_DIR)/arc.c $(SRC_DIR)/arc.h
 	@mkdir -p $(BUILD_DIR)
@@ -86,6 +105,12 @@ $(BUILD_DIR)/kinematics.o: $(SRC_DIR)/kinematics.c $(SRC_DIR)/kinematics.h
 
 # Compile gcode test source
 $(BUILD_DIR)/gcode_test.o: $(TEST_DIR)/gcode_test.c
+	@mkdir -p $(BUILD_DIR)
+	@echo "Compiling $< -> $@..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile terminal CLI test source
+$(BUILD_DIR)/terminal_cli_test.o: $(TEST_DIR)/terminal_cli_test.c
 	@mkdir -p $(BUILD_DIR)
 	@echo "Compiling $< -> $@..."
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -123,5 +148,8 @@ run: all
 	@echo ""
 	@echo "Running stepper tests..."
 	./$(STEPPER_TEST_TARGET)
+	@echo ""
+	@echo "Running terminal CLI tests..."
+	./$(CLI_TEST_TARGET)
 
 .PHONY: all clean dirs run
