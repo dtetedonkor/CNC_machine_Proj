@@ -32,7 +32,9 @@ void terminal_cli_init(terminal_cli_t *cli) {
 bool terminal_cli_cart_to_joint(const gcode_state_t *gcode, kin_joint_t *out_joint) {
     if (!gcode || !out_joint || !g_kin.cart_to_joint) return false;
 
-    kin_cart_t cart = {{ gcode->position_x, gcode->position_y, 0.0f }};
+    kin_cart_t cart = {{ 0.0f }};
+    cart.v[0] = gcode->position_x;
+    cart.v[1] = gcode->position_y;
     return g_kin.cart_to_joint(&cart, out_joint);
 }
 
