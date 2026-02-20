@@ -1,7 +1,7 @@
-import main
+import svg_parser
 import json
-from main import ProcessorWorker
-from main import PreviewCanvas
+from svg_parser import ProcessorWorker
+from svg_parser import PreviewCanvas
 from pathlib import Path
 from typing import Any, Optional, List
 

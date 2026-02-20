@@ -126,15 +126,16 @@ flash: $(BUILD)/$(TARGET).elf
 From `CNC_machine_Proj/`:
 
 ```bash
+sudo apt-get update
+sudo apt-get install gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi
 mkdir -p lib
-git submodule add https://github.com/libopencm3/libopencm3.git lib/libopencm3
-git submodule update --init --recursive
+git submodule add https://github.com/libopencm3/libopencm3.git libopencm3
 ```
 
 If already added:
 
 ```bash
-git submodule update --init --recursive
+git submodule update --init 
 ```
 
 ---

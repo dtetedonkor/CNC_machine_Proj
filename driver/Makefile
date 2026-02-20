@@ -6,10 +6,10 @@ SIZE     := $(PREFIX)-size
 TOP            := ..
 LIBOPENCM3_DIR := $(TOP)/lib/libopencm3
 
-TARGET := blink
+TARGET := terminal
 BUILD  := build
 
-SRCS := main.c
+SRCS := terminal_cli_main.c
 OBJS := $(SRCS:%.c=$(BUILD)/%.o)
 
 # Cortex-M4F (STM32F446RE)

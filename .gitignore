@@ -1,25 +1,47 @@
+# ========================
 # Build artifacts
+# ========================
 *.o
+*.elf
+*.map
+*.bin
+*.hex
 *.exe
+
 build/
+bin/
+_codeql_build_dir/
+
+# Test outputs
 test/bin/
 test/build/
 test/build_tmp/
 test/*_test
 !test/*_test.c
+
+# Examples (keep source)
 examples/*
 !examples/*.c
-_codeql_build_dir/
-lib/
-*ld
 
-# IDE files
+
+# ========================
+# Python
+# ========================
+.venv/
+__pycache__/
+*.pyc
+
+# ========================
+# IDE / Editor
+# ========================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS files
+# ========================
+# OS junk
+# ========================
 .DS_Store
 Thumbs.db
