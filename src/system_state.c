@@ -1,6 +1,7 @@
 /* system_state.c - System state management implementation */
 
 #include "system_state.h"
+#include "grbl.h"
 #include <string.h>
 #include <stdio.h>
 
