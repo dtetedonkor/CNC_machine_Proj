@@ -88,6 +88,9 @@ size_t hal_serial_write(hal_port_t port, const uint8_t *src, size_t len);
 /* Optional convenience: write null-terminated string. */
 size_t hal_serial_write_str(hal_port_t port, const char *s);
 
+/* Base32 encoding for serial comms*/
+
+size_t hal_serial_encode32(hal_port_t port, const char *s);
 /* ----------------------------- Digital I/O ----------------------------- */
 
 /* Generic GPIO (for LEDs, enables, etc.). */
