@@ -110,6 +110,9 @@ void stepper_resume(stepper_context_t *ctx);
 /* Stop motion immediately */
 void stepper_stop(stepper_context_t *ctx);
 
+/* check stepper state for status */
+void stepper_status(stepper_context_t *ctx);
+
 /* ----------------------------- Status queries ----------------------------- */
 
 /* Get current stepper state */
