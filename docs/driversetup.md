@@ -1,4 +1,4 @@
-Here are **reproducible, step-by-step instructions** for **both Windows and Linux** to build + flash the same **libopencm3 blink** to a **NUCLEO-F446RE** (LD2 = **PA5**), using the exact flow that worked for you (Makefile builds libopencm3 STM32F4 + app, flashes with OpenOCD).
+Here are **reproducible, step-by-step instructions** for **both Windows and Linux** to build + flash a **libopencm3 TMC2209 STEP pulse demo** on **STM32G491RE** (4x STEP/DIR + shared EN), using the same flow (Makefile builds libopencm3 STM32G4 + app, flashes with OpenOCD).
 
 ---
 
@@ -11,7 +11,7 @@ CNC_machine_Proj/
   driver/
     main.c
     Makefile
-    stm32f446re-memory.ld
+    stm32g491re-memory.ld
 ```
 
 ---
@@ -24,29 +24,52 @@ CNC_machine_Proj/
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 
-static void delay(volatile uint32_t n) {
-    while (n--) __asm__("nop");
+/* STEP: PA0..PA3, DIR: PA4..PA7, EN (active-low): PB0 */
+#define STEP_PINS_MASK (GPIO0 | GPIO1 | GPIO2 | GPIO3)
+#define DIR_PINS_MASK  (GPIO4 | GPIO5 | GPIO6 | GPIO7)
+#define EN_PIN         GPIO0
+#define PULSE_COUNT_PER_BURST 200U
+#define STEP_PULSE_DELAY_CYCLES 4000U
+#define DIR_CHANGE_DELAY_CYCLES 1200000U
+
+static void delay_cycles(volatile uint32_t cycles) {
+    while (cycles--) __asm__("nop");
+}
+
+static void gpio_setup(void) {
+    rcc_periph_clock_enable(RCC_GPIOA);
+    rcc_periph_clock_enable(RCC_GPIOB);
+    gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, STEP_PINS_MASK | DIR_PINS_MASK);
+    gpio_mode_setup(GPIOB, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, EN_PIN);
+    gpio_clear(GPIOB, EN_PIN);
 }
 
 int main(void) {
-    rcc_periph_clock_enable(RCC_GPIOA);
-    gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO5); // LD2 = PA5
+    gpio_setup();
+    gpio_set(GPIOA, DIR_PINS_MASK);
 
     while (1) {
-        gpio_toggle(GPIOA, GPIO5);
-        delay(2000000);
+        for (uint32_t i = 0; i < PULSE_COUNT_PER_BURST; i++) {
+            gpio_set(GPIOA, STEP_PINS_MASK);
+            delay_cycles(STEP_PULSE_DELAY_CYCLES);
+            gpio_clear(GPIOA, STEP_PINS_MASK);
+            delay_cycles(STEP_PULSE_DELAY_CYCLES);
+        }
+        delay_cycles(DIR_CHANGE_DELAY_CYCLES);
+        gpio_toggle(GPIOA, DIR_PINS_MASK);
+        delay_cycles(DIR_CHANGE_DELAY_CYCLES);
     }
 }
 ```
 
-## `driver/stm32f446re-memory.ld`
+## `driver/stm32g491re-memory.ld`
 
 ```ld
-/* STM32F446RE: 512K Flash, 128K SRAM */
+/* STM32G491RE: 512K Flash, 112K SRAM */
 MEMORY
 {
   rom (rx)  : ORIGIN = 0x08000000, LENGTH = 512K
-  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 128K
+  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 112K
 }
 ```
 
@@ -61,24 +84,24 @@ SIZE     := $(PREFIX)-size
 TOP            := ..
 LIBOPENCM3_DIR := $(TOP)/lib/libopencm3
 
-TARGET := blink
+TARGET := tmc2209_pulse
 BUILD  := build
 
 SRCS := main.c
 OBJS := $(SRCS:%.c=$(BUILD)/%.o)
 
-# Cortex-M4F (STM32F446RE)
+# Cortex-M4F (STM32G491RE)
 CPUFLAGS = -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 
 CFLAGS  += -O0 -g3 -Wall -Wextra
 CFLAGS  += $(CPUFLAGS)
 CFLAGS  += -ffunction-sections -fdata-sections
 CFLAGS  += -I$(LIBOPENCM3_DIR)/include
-CFLAGS  += -DSTM32F4
+CFLAGS  += -DSTM32G4
 
 # Generic libopencm3 linker script + our memory layout
 GENERIC_LD := $(LIBOPENCM3_DIR)/lib/cortex-m-generic.ld
-MEMORY_LD  := stm32f446re-memory.ld
+MEMORY_LD  := stm32g491re-memory.ld
 
 LDFLAGS += -T$(MEMORY_LD) -T$(GENERIC_LD)
 LDFLAGS += -nostartfiles
@@ -87,16 +110,16 @@ LDFLAGS += $(CPUFLAGS)
 LDFLAGS += -Wl,-Map=$(BUILD)/$(TARGET).map
 
 # libopencm3 library
-LIBNAME := opencm3_stm32f4
+LIBNAME := opencm3_stm32g4
 LDLIBS  += -L$(LIBOPENCM3_DIR)/lib -l$(LIBNAME)
 
 .PHONY: all clean libopencm3 flash
 
 all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).bin
 
-# Build libopencm3 only for STM32F4 family
+# Build libopencm3 only for STM32G4 family
 libopencm3:
-	$(MAKE) -C $(LIBOPENCM3_DIR) TARGETS='stm32/f4' PREFIX=$(PREFIX)
+	$(MAKE) -C $(LIBOPENCM3_DIR) TARGETS='stm32/g4' PREFIX=$(PREFIX)
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -115,7 +138,7 @@ clean:
 	rm -rf $(BUILD)
 
 flash: $(BUILD)/$(TARGET).elf
-	openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
+	openocd -f interface/stlink.cfg -f target/stm32g4x.cfg \
 		-c "program $(BUILD)/$(TARGET).elf verify reset exit"
 ```
 
@@ -183,7 +206,7 @@ Expected OpenOCD success lines:
 * `** Verified OK **`
 * `** Resetting Target **`
 
-LED **LD2 (PA5)** should blink.
+You should see STEP activity on **PA0..PA3** (logic analyzer/scope) for TMC2209 testing.
 
 ---
 

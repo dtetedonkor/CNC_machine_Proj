@@ -1,47 +1,47 @@
-#include <libopencm3/cm3/systick.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 
-static volatile uint32_t system_millis = 0;
+/* STM32G491RE + 4x TMC2209 STEP/DIR/EN "hello world" pulse demo */
+#define STEP_PINS_MASK (GPIO0 | GPIO1 | GPIO2 | GPIO3)
+#define DIR_PINS_MASK  (GPIO4 | GPIO5 | GPIO6 | GPIO7)
+#define EN_PIN         GPIO0
+/* Cycle delays below assume reset/default clock and are for quick bench testing only. */
+#define PULSE_COUNT_PER_BURST 200U
+#define STEP_PULSE_DELAY_CYCLES 4000U
+#define DIR_CHANGE_DELAY_CYCLES 1200000U
 
-void sys_tick_handler(void) {
-    system_millis++;
-}
-
-static void delay_ms(uint32_t ms) {
-    uint32_t start = system_millis;
-    while ((system_millis - start) < ms) {
+static void delay_cycles(volatile uint32_t cycles) {
+    while (cycles--) {
         __asm__("nop");
     }
 }
 
-static void clock_setup(void) {
-    /* NUCLEO-F446RE runs from HSI by default; use a libopencm3 helper config.
-       This sets up clocks + 168MHz-ish typical for F4 parts (depends on helper).
-       If this function isn’t available in your libopencm3 version, tell me and
-       I’ll give the explicit PLL setup. */
-    rcc_clock_setup_pll(&rcc_hsi_configs[RCC_CLOCK_3V3_168MHZ]);
-
-    /* 1ms SysTick */
-    systick_set_clocksource(STK_CSR_CLKSOURCE_AHB);
-    systick_set_reload(rcc_ahb_frequency / 1000 - 1);
-    systick_counter_enable();
-    systick_interrupt_enable();
-}
-
 static void gpio_setup(void) {
-    /* LD2 on NUCLEO-F446RE is PA5 */
     rcc_periph_clock_enable(RCC_GPIOA);
-    gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO5);
+    rcc_periph_clock_enable(RCC_GPIOB);
+
+    gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, STEP_PINS_MASK | DIR_PINS_MASK);
+    gpio_mode_setup(GPIOB, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, EN_PIN);
+
+    /* TMC2209 EN is active-low */
+    gpio_clear(GPIOB, EN_PIN);
 }
 
 int main(void) {
-    clock_setup();
+    /* Keep default reset clock; this is a basic STEP pulse smoke test, not precise timing. */
     gpio_setup();
+    gpio_set(GPIOA, DIR_PINS_MASK);
 
     while (1) {
-        gpio_toggle(GPIOA, GPIO5);
-        delay_ms(200);
+        for (uint32_t i = 0; i < PULSE_COUNT_PER_BURST; i++) {
+            gpio_set(GPIOA, STEP_PINS_MASK);
+            delay_cycles(STEP_PULSE_DELAY_CYCLES);
+            gpio_clear(GPIOA, STEP_PINS_MASK);
+            delay_cycles(STEP_PULSE_DELAY_CYCLES);
+        }
+
+        delay_cycles(DIR_CHANGE_DELAY_CYCLES);
+        gpio_toggle(GPIOA, DIR_PINS_MASK);
+        delay_cycles(DIR_CHANGE_DELAY_CYCLES);
     }
 }
-

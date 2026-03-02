@@ -4,8 +4,8 @@ PREFIX ?= arm-none-eabi
 # ---- Path to libopencm3 submodule ----
 LIBOPENCM3_DIR := lib/libopencm3
 
-# ---- Build only STM32F4 family (covers STM32F446RE) ----
-LIBOPENCM3_TARGETS := stm32/f4
+# ---- Build only STM32G4 family (covers STM32G491RE) ----
+LIBOPENCM3_TARGETS := stm32/g4
 
 .PHONY: all libopencm3 clean clean-libopencm3
 
