@@ -6,24 +6,24 @@ SIZE     := $(PREFIX)-size
 TOP            := ..
 LIBOPENCM3_DIR := $(TOP)/lib/libopencm3
 
-TARGET := terminal
+TARGET := tmc2209_pulse
 BUILD  := build
 
-SRCS := terminal_cli_main.c
+SRCS := main.c
 OBJS := $(SRCS:%.c=$(BUILD)/%.o)
 
-# Cortex-M4F (STM32F446RE)
+# Cortex-M4F (STM32G491RE)
 CPUFLAGS = -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 
 CFLAGS  += -O0 -g3 -Wall -Wextra
 CFLAGS  += $(CPUFLAGS)
 CFLAGS  += -ffunction-sections -fdata-sections
 CFLAGS  += -I$(LIBOPENCM3_DIR)/include
-CFLAGS  += -DSTM32F4
+CFLAGS  += -DSTM32G4
 
 # Generic libopencm3 linker script + our memory layout
 GENERIC_LD := $(LIBOPENCM3_DIR)/lib/cortex-m-generic.ld
-MEMORY_LD  := stm32f446re-memory.ld
+MEMORY_LD  := stm32g491re-memory.ld
 
 LDFLAGS += -T$(MEMORY_LD) -T$(GENERIC_LD)
 LDFLAGS += -nostartfiles
@@ -32,7 +32,7 @@ LDFLAGS += $(CPUFLAGS)
 LDFLAGS += -Wl,-Map=$(BUILD)/$(TARGET).map
 
 # libopencm3 library
-LIBNAME := opencm3_stm32f4
+LIBNAME := opencm3_stm32g4
 LDLIBS  += -L$(LIBOPENCM3_DIR)/lib -l$(LIBNAME)
 
 .PHONY: all clean libopencm3 flash
@@ -40,7 +40,7 @@ LDLIBS  += -L$(LIBOPENCM3_DIR)/lib -l$(LIBNAME)
 all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).bin
 
 libopencm3:
-	$(MAKE) -C $(LIBOPENCM3_DIR) TARGETS='stm32/f4' PREFIX=$(PREFIX)
+	$(MAKE) -C $(LIBOPENCM3_DIR) TARGETS='stm32/g4' PREFIX=$(PREFIX)
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -60,5 +60,5 @@ clean:
 	rm -rf $(BUILD)
 
 flash: $(BUILD)/$(TARGET).elf
-	openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
+	openocd -f interface/stlink.cfg -f target/stm32g4x.cfg \
 		-c "program $(BUILD)/$(TARGET).elf verify reset exit"
