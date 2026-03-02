@@ -21,12 +21,16 @@ CNC_machine_Proj/
 ## `driver/main.c`
 
 ```c
+#include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 
 /* STEP: PA0..PA3, DIR: PA4..PA7, EN (active-low): PB0 */
 #define STEP_PINS_MASK (GPIO0 | GPIO1 | GPIO2 | GPIO3)
 #define DIR_PINS_MASK  (GPIO4 | GPIO5 | GPIO6 | GPIO7)
 #define EN_PIN         GPIO0
+#define PULSE_COUNT_PER_BURST 200U
+#define STEP_PULSE_DELAY_CYCLES 4000U
+#define DIR_CHANGE_DELAY_CYCLES 1200000U
 
 static void delay_cycles(volatile uint32_t cycles) {
     while (cycles--) __asm__("nop");
@@ -45,10 +49,15 @@ int main(void) {
     gpio_set(GPIOA, DIR_PINS_MASK);
 
     while (1) {
-        gpio_set(GPIOA, STEP_PINS_MASK);
-        delay_cycles(4000);
-        gpio_clear(GPIOA, STEP_PINS_MASK);
-        delay_cycles(4000);
+        for (uint32_t i = 0; i < PULSE_COUNT_PER_BURST; i++) {
+            gpio_set(GPIOA, STEP_PINS_MASK);
+            delay_cycles(STEP_PULSE_DELAY_CYCLES);
+            gpio_clear(GPIOA, STEP_PINS_MASK);
+            delay_cycles(STEP_PULSE_DELAY_CYCLES);
+        }
+        delay_cycles(DIR_CHANGE_DELAY_CYCLES);
+        gpio_toggle(GPIOA, DIR_PINS_MASK);
+        delay_cycles(DIR_CHANGE_DELAY_CYCLES);
     }
 }
 ```
