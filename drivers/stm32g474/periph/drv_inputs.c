@@ -3,6 +3,8 @@
 #include "drv_gpio.h"
 #include "drv_timebase.h"
 
+#include <libopencm3/cm3/cortex.h>
+
 #define INPUT_DEBOUNCE_MS 5U
 
 static uint32_t g_last_sample = 0;
@@ -34,8 +36,10 @@ void drv_inputs_poll(void) {
 
 drv_inputs_snapshot_t drv_inputs_get(void) {
     drv_inputs_snapshot_t out;
+    cm_disable_interrupts();
     out.state = g_stable_state;
     out.rising_edges = (~g_prev_stable_state) & g_stable_state;
     g_prev_stable_state = g_stable_state;
+    cm_enable_interrupts();
     return out;
 }

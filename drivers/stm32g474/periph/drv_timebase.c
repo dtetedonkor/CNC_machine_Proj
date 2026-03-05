@@ -21,7 +21,21 @@ uint32_t drv_timebase_millis(void) {
 }
 
 uint32_t drv_timebase_micros(void) {
-    return g_millis * 1000U;
+    const uint32_t ticks_per_ms = rcc_ahb_frequency / 8000U;
+    uint32_t ms_before;
+    uint32_t ms_after;
+    uint32_t systick_value;
+
+    do {
+        ms_before = g_millis;
+        systick_value = systick_get_value();
+        ms_after = g_millis;
+    } while (ms_before != ms_after);
+
+    const uint32_t elapsed_ticks_in_ms = ticks_per_ms - systick_value;
+    const uint32_t elapsed_us_in_ms = (elapsed_ticks_in_ms * 1000U) / ticks_per_ms;
+
+    return (ms_before * 1000U) + elapsed_us_in_ms;
 }
 
 void drv_timebase_delay_ms(uint32_t ms) {

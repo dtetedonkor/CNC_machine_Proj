@@ -23,7 +23,7 @@ static void rx_push(uint8_t ch) {
     g_rx_head = next;
 }
 
-void usart2_isr(void) {
+void usart1_isr(void) {
     if ((usart_get_flag(BOARD_USART, USART_ISR_RXNE_RXFNE) != 0) &&
         (usart_get_interrupt_source(BOARD_USART, USART_CR1_RXNEIE_RXFNEIE) != 0)) {
         rx_push((uint8_t)usart_recv(BOARD_USART));
@@ -42,17 +42,19 @@ void drv_uart_init(void) {
     usart_set_flow_control(BOARD_USART, USART_FLOWCONTROL_NONE);
 
     usart_enable_rx_interrupt(BOARD_USART);
-    nvic_enable_irq(NVIC_USART2_IRQ);
+    nvic_enable_irq(NVIC_USART1_IRQ);
     usart_enable(BOARD_USART);
 }
 
 size_t drv_uart_read(uint8_t *dst, size_t cap) {
     size_t read = 0;
+    uint16_t tail = g_rx_tail;
 
-    while ((read < cap) && (g_rx_tail != g_rx_head)) {
-        dst[read++] = g_rx_buffer[g_rx_tail];
-        g_rx_tail = (uint16_t)((g_rx_tail + 1U) % UART_RX_BUFFER_SIZE);
+    while ((read < cap) && (tail != g_rx_head)) {
+        dst[read++] = g_rx_buffer[tail];
+        tail = (uint16_t)((tail + 1U) % UART_RX_BUFFER_SIZE);
     }
+    g_rx_tail = tail;
 
     return read;
 }
