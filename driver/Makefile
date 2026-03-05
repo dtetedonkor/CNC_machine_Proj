@@ -24,7 +24,8 @@ SRCS := \
 	../drivers/stm32g474/periph/drv_uart.c \
 	../drivers/stm32g474/hal/hal_impl.c
 
-OBJS := $(foreach src,$(SRCS),$(BUILD)/$(notdir $(src:.c=.o)))
+obj_for = $(BUILD)/$(subst /,_,$(basename $(1))).o
+OBJS := $(foreach src,$(SRCS),$(call obj_for,$(src)))
 
 # Cortex-M4F (STM32G491RE)
 CPUFLAGS = -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
@@ -63,7 +64,7 @@ $(BUILD):
 	mkdir -p $(BUILD)
 
 define compile_source
-$(BUILD)/$(notdir $(1:.c=.o)): $(1) | $(BUILD)
+$(call obj_for,$(1)): $(1) | $(BUILD)
 	$$(CC) $$(CFLAGS) -c $$< -o $$@
 endef
 $(foreach src,$(SRCS),$(eval $(call compile_source,$(src))))

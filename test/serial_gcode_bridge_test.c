@@ -9,13 +9,14 @@
 static bool mock_motor_enabled = false;
 static uint32_t mock_pulse_counts[HAL_AXIS_MAX];
 static uint32_t mock_dir_set_counts[HAL_AXIS_MAX];
+static uint32_t mock_time_us = 0;
 
 hal_status_t hal_init(void) { return HAL_OK; }
 void hal_start(void) {}
 void hal_deinit(void) {}
-uint32_t hal_millis(void) { return 0; }
-uint32_t hal_micros(void) { return 0; }
-void hal_delay_ms(uint32_t ms) { (void)ms; }
+uint32_t hal_millis(void) { return mock_time_us / 1000u; }
+uint32_t hal_micros(void) { return mock_time_us; }
+void hal_delay_ms(uint32_t ms) { mock_time_us += (ms * 1000u); }
 size_t hal_serial_read(hal_port_t port, uint8_t *dst, size_t cap) {
     (void)port;
     (void)dst;
@@ -62,13 +63,14 @@ void hal_read_inputs(hal_inputs_t *out) {
         memset(out, 0, sizeof(*out));
     }
 }
-void hal_poll(void) {}
+void hal_poll(void) { mock_time_us++; }
 void hal_tick_1khz_isr(void) {}
 
 static void reset_mocks(void) {
     mock_motor_enabled = false;
     memset(mock_pulse_counts, 0, sizeof(mock_pulse_counts));
     memset(mock_dir_set_counts, 0, sizeof(mock_dir_set_counts));
+    mock_time_us = 0;
 }
 
 static void test_g0_motion_emits_ok_and_steps(void) {

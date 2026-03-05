@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "gcode.h"
+#include "hal.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,9 +12,8 @@ extern "C" {
 
 typedef struct {
     gcode_state_t gcode;
-    float steps_per_mm_x;
-    float steps_per_mm_y;
-    uint32_t step_pulse_delay_ms;
+    float steps_per_mm[HAL_AXIS_MAX];
+    uint32_t step_pulse_delay_us;
 } serial_gcode_bridge_t;
 
 void serial_gcode_bridge_init(serial_gcode_bridge_t *bridge);

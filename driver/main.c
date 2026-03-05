@@ -37,7 +37,11 @@ int main(void) {
         const uart_line_status_t line_status = serial_uart_read_line(&uart, line, sizeof(line));
         if (line_status == UART_LINE_READY) {
             char response[80];
-            serial_gcode_bridge_process_line(&bridge, line, response, sizeof(response));
+            const gcode_status_t status =
+                serial_gcode_bridge_process_line(&bridge, line, response, sizeof(response));
+            if (status != GCODE_OK) {
+                hal_stepper_enable(false);
+            }
             write_line(response);
         } else if (line_status == UART_LINE_OVERFLOW) {
             write_line("error: line overflow");
