@@ -7,7 +7,7 @@ A desktop GUI built with **Qt** using **PySide6**.
 This front end loads and previews design files (e.g., **.svg**) and renders them on a canvas for user interaction and workflow steps like parsing into polylines.
 
 Firmware custom built cnc library using **libopencm3** for driver development.
-Firmware takes gcode and converts it into pwm motor contorls
+Firmware takes gcode and converts it into pwm motor controls
 
 ## Firmware Drivers (current modules)
 - `serial_uart` for UART RX/TX transport buffering and line framing
