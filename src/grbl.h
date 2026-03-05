@@ -147,11 +147,15 @@
 /* These are your project headers from earlier steps. Adjust paths as needed. */
 
 #include "hal.h"
+#include "serial_uart.h"
 #include "protocol.h"
+#include "system_state.h"
+#include "state_machine.h"
 #include "kinematics.h"
 #include "gcode.h"
 #include "planner.h"
 #include "stepper.h"
+#include "io_limits_estop_hand.h"
 
 #if GRBL_KINEMATICS_COREXY
   #include "kin_corexy.h"

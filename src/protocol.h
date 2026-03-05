@@ -58,7 +58,26 @@ typedef struct {
     bool to_uppercase;            /* optional: normalize to uppercase */
 } proto_config_t;
 
-typedef struct protocol protocol_t;
+typedef struct protocol {
+    proto_config_t cfg;
+
+    proto_line_cb_t on_line;
+    proto_rt_cb_t on_rt;
+    void *user;
+
+    char cur[PROTOCOL_LINE_MAX + 1];
+    uint16_t cur_len;
+    bool cur_overflow;
+    bool cur_bad_char;
+    bool in_paren_comment;
+    bool in_semicolon_comment;
+
+    char q[PROTOCOL_LINE_QUEUE_DEPTH][PROTOCOL_LINE_MAX + 1];
+    proto_line_status_t qst[PROTOCOL_LINE_QUEUE_DEPTH];
+    uint8_t q_head;
+    uint8_t q_tail;
+    uint8_t q_count;
+} protocol_t;
 
 /* Initialize protocol instance (zero dynamic allocation). */
 void protocol_init(protocol_t *p,
