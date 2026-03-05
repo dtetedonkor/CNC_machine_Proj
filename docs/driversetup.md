@@ -1,4 +1,4 @@
-Here are **reproducible, step-by-step instructions** for **both Windows and Linux** to build + flash a **libopencm3 TMC2209 STEP pulse demo** on **STM32G491RE** (4x STEP/DIR + shared EN), using the same flow (Makefile builds libopencm3 STM32G4 + app, flashes with OpenOCD).
+Here are **reproducible, step-by-step instructions** for **both Windows and Linux** to build + flash a **libopencm3 UART G-code + STEP/DIR firmware** on **STM32G491RE/STM32G474-family wiring** (4x STEP/DIR + shared EN), using the same flow (Makefile builds libopencm3 STM32G4 + app, flashes with OpenOCD).
 
 ---
 
@@ -18,7 +18,7 @@ CNC_machine_Proj/
 
 # Driver module layout (current firmware)
 
-The original `driver/main.c` below is still useful as a low-level STEP/DIR smoke test, but the firmware now has dedicated driver-facing modules in `src/`:
+The firmware now uses `driver/main.c` as the UART command loop entry point and combines these driver-facing modules in `src/`:
 
 - `serial_uart` (`src/serial_uart.h/.c`)
   - UART transport ring buffers (RX/TX), CR/LF line handling, and optional backspace handling.
@@ -32,8 +32,9 @@ The original `driver/main.c` below is still useful as a low-level STEP/DIR smoke
   - Hardware boundary for GPIO/timers/serial/spindle/limits.
 
 For board bring-up:
-1. Use `driver/main.c` to verify physical STEP/DIR/EN wiring and pulse polarity.
-2. Then integrate the HAL implementation used by the modules above for full serial-to-motion behavior.
+1. Flash firmware and connect to USART at `115200 8N1` with PuTTY (or any terminal).
+2. Type a line like `G0 X1` then Enter.
+3. Firmware returns `OK` on valid commands (or `error: ...` for invalid lines) and drives motors through `hal_stepper_*` calls.
 
 ---
 
@@ -227,7 +228,7 @@ Expected OpenOCD success lines:
 * `** Verified OK **`
 * `** Resetting Target **`
 
-You should see STEP activity on **PA0..PA3** (logic analyzer/scope) for TMC2209 testing.
+You should receive `CNC ready` after boot on serial, then `OK` for valid G-code lines and STEP activity on **PA0..PA3** for motion commands.
 
 ---
 

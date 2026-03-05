@@ -6,11 +6,26 @@ SIZE     := $(PREFIX)-size
 TOP            := ..
 LIBOPENCM3_DIR := $(TOP)/lib/libopencm3
 
-TARGET := tmc2209_pulse
+TARGET := cnc_uart_gcode
 BUILD  := build
 
-SRCS := main.c
-OBJS := $(SRCS:%.c=$(BUILD)/%.o)
+SRCS := \
+	main.c \
+	../src/serial_uart.c \
+	../src/serial_gcode_bridge.c \
+	../src/gcode.c \
+	../src/arc.c \
+	../src/kinematics.c \
+	../drivers/stm32g474/board/board_init.c \
+	../drivers/stm32g474/periph/drv_gpio.c \
+	../drivers/stm32g474/periph/drv_inputs.c \
+	../drivers/stm32g474/periph/drv_stepper_timer.c \
+	../drivers/stm32g474/periph/drv_timebase.c \
+	../drivers/stm32g474/periph/drv_uart.c \
+	../drivers/stm32g474/hal/hal_impl.c
+
+obj_for = $(BUILD)/$(subst /,_,$(basename $(1))).o
+OBJS := $(foreach src,$(SRCS),$(call obj_for,$(src)))
 
 # Cortex-M4F (STM32G491RE)
 CPUFLAGS = -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
@@ -19,6 +34,8 @@ CFLAGS  += -O0 -g3 -Wall -Wextra
 CFLAGS  += $(CPUFLAGS)
 CFLAGS  += -ffunction-sections -fdata-sections
 CFLAGS  += -I$(LIBOPENCM3_DIR)/include
+CFLAGS  += -I$(TOP)/src
+CFLAGS  += -I$(TOP)/drivers/stm32g474
 CFLAGS  += -DSTM32G4
 
 # Generic libopencm3 linker script + our memory layout
@@ -34,6 +51,7 @@ LDFLAGS += -Wl,-Map=$(BUILD)/$(TARGET).map
 # libopencm3 library
 LIBNAME := opencm3_stm32g4
 LDLIBS  += -L$(LIBOPENCM3_DIR)/lib -l$(LIBNAME)
+LDLIBS  += -lm
 
 .PHONY: all clean libopencm3 flash
 
@@ -45,8 +63,11 @@ libopencm3:
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(BUILD)/%.o: %.c | $(BUILD)
-	$(CC) $(CFLAGS) -c $< -o $@
+define compile_source
+$(call obj_for,$(1)): $(1) | $(BUILD)
+	$$(CC) $$(CFLAGS) -c $$< -o $$@
+endef
+$(foreach src,$(SRCS),$(eval $(call compile_source,$(src))))
 
 $(BUILD)/$(TARGET).elf: libopencm3 $(OBJS)
 	$(CC) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@
