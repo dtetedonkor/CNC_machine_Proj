@@ -1,33 +1,7 @@
 /* protocol.c */
 
 #include "protocol.h"
-#include "kinematics.h"
-#include "hal.h"
-#include "grbl.h"
 #include <string.h>
-
-/* ---- internal types ---- */
-
-struct protocol {
-    proto_config_t cfg;
-
-    proto_line_cb_t on_line;
-    proto_rt_cb_t   on_rt;
-    void           *user;
-
-    /* Current assembling line */
-    char     cur[PROTOCOL_LINE_MAX + 1];
-    uint16_t cur_len;
-    bool     cur_overflow;
-    bool     in_paren_comment;
-
-    /* Completed line queue */
-    char     q[PROTOCOL_LINE_QUEUE_DEPTH][PROTOCOL_LINE_MAX + 1];
-    proto_line_status_t qst[PROTOCOL_LINE_QUEUE_DEPTH];
-    uint8_t  q_head;
-    uint8_t  q_tail;
-    uint8_t  q_count;
-};
 
 /* ---- helpers ---- */
 
@@ -90,6 +64,8 @@ static void emit_line(protocol_t *p) {
 
     if (p->cur_overflow) {
         st = PROTO_LINE_OVERFLOW;
+    } else if (p->cur_bad_char) {
+        st = PROTO_LINE_BAD_CHAR;
     } else {
         /* Trim */
         trim_ws(p->cur);
@@ -107,7 +83,9 @@ static void emit_line(protocol_t *p) {
     /* Reset assembly state for next line */
     p->cur_len = 0;
     p->cur_overflow = false;
+    p->cur_bad_char = false;
     p->in_paren_comment = false;
+    p->in_semicolon_comment = false;
 
     if (st == PROTO_LINE_EMPTY) {
         return; /* don't enqueue empty/ignored lines */
@@ -147,7 +125,9 @@ void protocol_reset(protocol_t *p) {
     if (!p) return;
     p->cur_len = 0;
     p->cur_overflow = false;
+    p->cur_bad_char = false;
     p->in_paren_comment = false;
+    p->in_semicolon_comment = false;
 
     p->q_head = p->q_tail = p->q_count = 0;
     memset(p->q, 0, sizeof(p->q));
@@ -182,13 +162,15 @@ void protocol_feed_bytes(protocol_t *p, const uint8_t *data, size_t len) {
         /* ---- ignore non-printable (except tab/space) ---- */
         if (!(is_printable_ascii(c) || c == '\t')) {
             /* Mark bad char but keep consuming until newline. */
-            if (!p->cur_overflow && p->cur_len < PROTOCOL_LINE_MAX) {
-                /* We can choose to record an error state by forcing overflow-like behavior. */
-            }
+            p->cur_bad_char = true;
             continue;
         }
 
         char ch = (char)c;
+
+        if (p->in_semicolon_comment) {
+            continue;
+        }
 
         /* ---- comment stripping ---- */
         if (p->cfg.strip_paren_comments) {
@@ -203,20 +185,8 @@ void protocol_feed_bytes(protocol_t *p, const uint8_t *data, size_t len) {
 
         if (p->cfg.strip_semicolon_comments) {
             if (ch == ';') {
-                /* ignore rest of line until newline */
-                /* easiest: set overflow-like mode and just stop appending */
-                p->cur_overflow = p->cur_overflow; /* no-op */
-                /* consume bytes until newline without appending */
-                /* We can do this by entering a paren-comment-like mode, but keep it simple:
-                   just skip appends while leaving cur_len as-is; the loop continues. */
-                for (i = i + 1; i < len; i++) {
-                    if (data[i] == '\n') { emit_line(p); }
-                    else if (data[i] == 0x18u) { emit_rt(p, PROTO_RT_RESET); protocol_reset(p); }
-                    else if (data[i] == (uint8_t)'?') { emit_rt(p, PROTO_RT_STATUS_QUERY); }
-                    else if (data[i] == (uint8_t)'!') { emit_rt(p, PROTO_RT_FEED_HOLD); }
-                    else if (data[i] == (uint8_t)'~') { emit_rt(p, PROTO_RT_CYCLE_START); }
-                }
-                break;
+                p->in_semicolon_comment = true;
+                continue;
             }
         }
 

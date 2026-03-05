@@ -13,6 +13,8 @@ PLANNER_TEST_TARGET = $(BIN_DIR)/planner_test_runner
 GCODE_TEST_TARGET = $(BIN_DIR)/gcode_test_runner
 STEPPER_TEST_TARGET = $(BIN_DIR)/stepper_test_runner
 CLI_TEST_TARGET = $(BIN_DIR)/terminal_cli_test_runner
+PROTOCOL_TEST_TARGET = $(BIN_DIR)/protocol_test_runner
+UART_TEST_TARGET = $(BIN_DIR)/serial_uart_test_runner
 
 # Source / objects
 OBJS = $(BUILD_DIR)/parser.o $(BUILD_DIR)/input_test.o
@@ -20,9 +22,11 @@ PLANNER_OBJS = $(BUILD_DIR)/planner.o $(BUILD_DIR)/planner_test.o
 GCODE_OBJS = $(BUILD_DIR)/gcode.o $(BUILD_DIR)/arc.o $(BUILD_DIR)/kinematics.o $(BUILD_DIR)/gcode_test.o
 STEPPER_OBJS = $(BUILD_DIR)/stepper.o $(BUILD_DIR)/planner.o $(BUILD_DIR)/stepper_test.o
 CLI_OBJS = $(BUILD_DIR)/terminal_cli.o $(BUILD_DIR)/kin_corexy.o $(BUILD_DIR)/gcode.o $(BUILD_DIR)/arc.o $(BUILD_DIR)/kinematics.o $(BUILD_DIR)/terminal_cli_test.o
+PROTOCOL_OBJS = $(BUILD_DIR)/protocol.o $(BUILD_DIR)/protocol_test.o
+UART_OBJS = $(BUILD_DIR)/serial_uart.o $(BUILD_DIR)/serial_uart_test.o
 
 # Default target
-all: dirs $(TEST_TARGET) $(PLANNER_TEST_TARGET) $(GCODE_TEST_TARGET) $(STEPPER_TEST_TARGET) $(CLI_TEST_TARGET)
+all: dirs $(TEST_TARGET) $(PLANNER_TEST_TARGET) $(GCODE_TEST_TARGET) $(STEPPER_TEST_TARGET) $(CLI_TEST_TARGET) $(PROTOCOL_TEST_TARGET) $(UART_TEST_TARGET)
 
 # Link test runner  (THIS WAS MISSING)
 $(TEST_TARGET): $(OBJS)
@@ -48,6 +52,16 @@ $(STEPPER_TEST_TARGET): $(STEPPER_OBJS)
 $(CLI_TEST_TARGET): $(CLI_OBJS)
 	@echo "Linking $@..."
 	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+# Link protocol test runner
+$(PROTOCOL_TEST_TARGET): $(PROTOCOL_OBJS)
+	@echo "Linking $@..."
+	$(CC) $(CFLAGS) -o $@ $^
+
+# Link serial uart test runner
+$(UART_TEST_TARGET): $(UART_OBJS)
+	@echo "Linking $@..."
+	$(CC) $(CFLAGS) -o $@ $^
 
 # Compile core source
 $(BUILD_DIR)/parser.o: $(SRC_DIR)/parser.c
@@ -127,6 +141,26 @@ $(BUILD_DIR)/stepper_test.o: $(TEST_DIR)/stepper_test.c
 	@echo "Compiling $< -> $@..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/protocol.o: $(SRC_DIR)/protocol.c $(SRC_DIR)/protocol.h
+	@mkdir -p $(BUILD_DIR)
+	@echo "Compiling $< -> $@..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/protocol_test.o: $(TEST_DIR)/protocol_test.c
+	@mkdir -p $(BUILD_DIR)
+	@echo "Compiling $< -> $@..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/serial_uart.o: $(SRC_DIR)/serial_uart.c $(SRC_DIR)/serial_uart.h
+	@mkdir -p $(BUILD_DIR)
+	@echo "Compiling $< -> $@..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/serial_uart_test.o: $(TEST_DIR)/serial_uart_test.c
+	@mkdir -p $(BUILD_DIR)
+	@echo "Compiling $< -> $@..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Ensure dirs exist
 dirs:
 	@mkdir -p $(BUILD_DIR)
@@ -151,5 +185,11 @@ run: all
 	@echo ""
 	@echo "Running terminal CLI tests..."
 	./$(CLI_TEST_TARGET)
+	@echo ""
+	@echo "Running protocol tests..."
+	./$(PROTOCOL_TEST_TARGET)
+	@echo ""
+	@echo "Running serial UART tests..."
+	./$(UART_TEST_TARGET)
 
 .PHONY: all clean dirs run
