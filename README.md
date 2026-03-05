@@ -9,6 +9,15 @@ This front end loads and previews design files (e.g., **.svg**) and renders them
 Firmware custom built cnc library using **libopencm3** for driver development.
 Firmware takes gcode and converts it into pwm motor contorls
 
+## Firmware Drivers (current modules)
+- `serial_uart` for UART RX/TX transport buffering and line framing
+- `protocol` for line validation and realtime command handling
+- `state_machine`/`system_state` for run/hold/alarm transitions
+- `io_limits_estop_hand` for debounced limits + latched E-stop safety
+- `hal` as the platform-specific GPIO/timer/serial boundary
+
+Driver setup and flashing details: `docs/driversetup.md`
+
 
 ## Features
 - Qt-based desktop UI (PySide6)

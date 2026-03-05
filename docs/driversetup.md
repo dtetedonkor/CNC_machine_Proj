@@ -16,6 +16,27 @@ CNC_machine_Proj/
 
 ---
 
+# Driver module layout (current firmware)
+
+The original `driver/main.c` below is still useful as a low-level STEP/DIR smoke test, but the firmware now has dedicated driver-facing modules in `src/`:
+
+- `serial_uart` (`src/serial_uart.h/.c`)
+  - UART transport ring buffers (RX/TX), CR/LF line handling, and optional backspace handling.
+- `protocol` (`src/protocol.h/.c`)
+  - Line intake/validation, `ok/error`-style acceptance boundaries, and realtime command detection (`?`, `!`, `~`, Ctrl-X).
+- `state_machine` (`src/state_machine.h/.c`) + `system_state` (`src/system_state.h/.c`)
+  - Runtime machine states (idle/run/hold/alarm) and feed-hold/resume/reset control points.
+- `io_limits_estop_hand` (`src/io_limits_estop_hand.h/.c`)
+  - Debounced limit/E-stop sampling and latched E-stop behavior for safety.
+- `hal` (`src/hal.h`)
+  - Hardware boundary for GPIO/timers/serial/spindle/limits.
+
+For board bring-up:
+1. Use `driver/main.c` to verify physical STEP/DIR/EN wiring and pulse polarity.
+2. Then integrate the HAL implementation used by the modules above for full serial-to-motion behavior.
+
+---
+
 # 1) Source files (same on both)
 
 ## `driver/main.c`
