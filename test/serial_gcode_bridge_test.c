@@ -16,6 +16,10 @@ static size_t mock_rx_len = 0u;
 static size_t mock_rx_pos = 0u;
 static char mock_tx_text[512];
 static size_t mock_tx_len = 0u;
+static const size_t TEST_POLL_ITERATIONS_LIMIT = 16u;
+static const size_t GCODE_RESPONSE_MAX_LEN = 80u;
+static const char DRIVER_READY_MSG[] = "CNC ready";
+static const char DRIVER_READY_LINE[] = "CNC ready\r\n";
 
 hal_status_t hal_init(void) { return HAL_OK; }
 void hal_start(void) {}
@@ -111,31 +115,31 @@ static void driver_write_line(const char *msg) {
 typedef struct {
     serial_uart_t uart;
     serial_gcode_bridge_t bridge;
-} driver_runtime_t;
+} test_driver_context_t;
 
-static void driver_runtime_init(driver_runtime_t *runtime) {
-    assert(runtime != NULL);
+static void driver_runtime_init(test_driver_context_t *ctx) {
+    assert(ctx != NULL);
     assert(hal_init() == HAL_OK);
     hal_start();
-    serial_uart_init(&runtime->uart);
-    serial_gcode_bridge_init(&runtime->bridge);
-    driver_write_line("CNC ready");
+    serial_uart_init(&ctx->uart);
+    serial_gcode_bridge_init(&ctx->bridge);
+    driver_write_line(DRIVER_READY_MSG);
 }
 
-static void driver_runtime_poll_once(driver_runtime_t *runtime) {
-    assert(runtime != NULL);
+static void driver_runtime_poll_once(test_driver_context_t *ctx) {
+    assert(ctx != NULL);
     uint8_t rx_buf[32];
     const size_t rx = hal_serial_read(HAL_PORT_GCODE, rx_buf, sizeof(rx_buf));
     if (rx > 0u) {
-        serial_uart_rx_push(&runtime->uart, rx_buf, rx);
+        serial_uart_rx_push(&ctx->uart, rx_buf, rx);
     }
 
     char line[UART_LINE_MAX + 1];
-    const uart_line_status_t line_status = serial_uart_read_line(&runtime->uart, line, sizeof(line));
+    const uart_line_status_t line_status = serial_uart_read_line(&ctx->uart, line, sizeof(line));
     if (line_status == UART_LINE_READY) {
-        char response[80];
+        char response[GCODE_RESPONSE_MAX_LEN];
         const gcode_status_t status =
-            serial_gcode_bridge_process_line(&runtime->bridge, line, response, sizeof(response));
+            serial_gcode_bridge_process_line(&ctx->bridge, line, response, sizeof(response));
         if (status != GCODE_OK) {
             hal_stepper_enable(false);
         }
@@ -193,13 +197,13 @@ static void test_driver_startup_and_mock_gcode_over_uart(void) {
     reset_mocks();
     mock_uart_feed_text("M17\nG0 X1 Y1\nM18\n");
 
-    driver_runtime_t runtime;
+    test_driver_context_t runtime;
     driver_runtime_init(&runtime);
-    for (size_t i = 0; i < 16u; ++i) {
+    for (size_t i = 0; i < TEST_POLL_ITERATIONS_LIMIT; ++i) {
         driver_runtime_poll_once(&runtime);
     }
 
-    assert(strncmp(mock_tx_text, "CNC ready\r\n", strlen("CNC ready\r\n")) == 0);
+    assert(strncmp(mock_tx_text, DRIVER_READY_LINE, strlen(DRIVER_READY_LINE)) == 0);
     assert(strstr(mock_tx_text, "OK\r\n") != NULL);
     assert(mock_pulse_counts[HAL_AXIS_X] > 0u);
     assert(mock_pulse_counts[HAL_AXIS_Y] > 0u);
