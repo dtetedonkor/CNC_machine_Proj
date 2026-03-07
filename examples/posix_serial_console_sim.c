@@ -5,22 +5,17 @@
 
 #include "../src/hal.h"
 #include "../src/serial_gcode_bridge.h"
-#include "../src/serial_uart.h"
 
-static const char MOCK_GCODE_STREAM[] =
-    "M17\n"
-    "G0 X2 Y1\n"
-    "G1 X1 Y0 F120\n"
-    "M18\n";
+#define SHELL_PROMPT "gcode> "
+#define SHELL_INPUT_MAX 256u
+#define SHELL_RESPONSE_MAX 80u
 
-static size_t g_rx_pos = 0u;
 static uint32_t g_mock_time_us = 0u;
 static char g_uart_line_buf[256];
 static size_t g_uart_line_len = 0u;
 static bool g_motor_enabled = false;
 static uint32_t g_step_pulses[HAL_AXIS_MAX];
 static uint32_t g_dir_changes[HAL_AXIS_MAX];
-static const size_t max_simulation_iterations = 128u;
 
 hal_status_t hal_init(void) { return HAL_OK; }
 void hal_start(void) {}
@@ -31,14 +26,9 @@ void hal_delay_ms(uint32_t ms) { g_mock_time_us += ms * 1000u; }
 
 size_t hal_serial_read(hal_port_t port, uint8_t *dst, size_t cap) {
     (void)port;
-    if (!dst || cap == 0u || MOCK_GCODE_STREAM[g_rx_pos] == '\0') {
-        return 0u;
-    }
-    size_t copied = 0u;
-    while (copied < cap && MOCK_GCODE_STREAM[g_rx_pos] != '\0') {
-        dst[copied++] = (uint8_t)MOCK_GCODE_STREAM[g_rx_pos++];
-    }
-    return copied;
+    (void)dst;
+    (void)cap;
+    return 0u;
 }
 
 size_t hal_serial_write(hal_port_t port, const uint8_t *src, size_t len) {
@@ -122,56 +112,63 @@ int main(void) {
     }
     hal_start();
 
-    serial_uart_t uart;
-    serial_uart_init(&uart);
-
     serial_gcode_bridge_t bridge;
     serial_gcode_bridge_init(&bridge);
 
-    printf("POSIX serial simulation (driver/main.c flow)\n");
-    printf("HOST -> MCU script:\n%s\n", MOCK_GCODE_STREAM);
+    printf("CNC G-code Shell\n");
+    printf("Type G-code commands (e.g. G0 X10 Y20). Type 'quit' to exit.\n\n");
     write_line("CNC ready");
 
-    for (size_t i = 0; i < max_simulation_iterations; ++i) {
-        uint8_t rx_buf[32];
-        const size_t rx = hal_serial_read(HAL_PORT_GCODE, rx_buf, sizeof(rx_buf));
-        if (rx > 0u) {
-            serial_uart_rx_push(&uart, rx_buf, rx);
-        }
+    char line[SHELL_INPUT_MAX];
 
-        char line[UART_LINE_MAX + 1];
-        const uart_line_status_t line_status = serial_uart_read_line(&uart, line, sizeof(line));
-        if (line_status == UART_LINE_READY) {
-            printf("HOST -> MCU: %s\n", line);
-            memset(g_step_pulses, 0, sizeof(g_step_pulses));
-            memset(g_dir_changes, 0, sizeof(g_dir_changes));
-            char response[80];
-            const gcode_status_t st =
-                serial_gcode_bridge_process_line(&bridge, line, response, sizeof(response));
-            if (st != GCODE_OK) {
-                hal_stepper_enable(false);
-            }
-            printf("MCU [stepper]: dir_changes[X=%lu Y=%lu Z=%lu A=%lu] pulses[X=%lu Y=%lu Z=%lu A=%lu]\n",
-                   (unsigned long)g_dir_changes[HAL_AXIS_X],
-                   (unsigned long)g_dir_changes[HAL_AXIS_Y],
-                   (unsigned long)g_dir_changes[HAL_AXIS_Z],
-                   (unsigned long)g_dir_changes[HAL_AXIS_A],
-                   (unsigned long)g_step_pulses[HAL_AXIS_X],
-                   (unsigned long)g_step_pulses[HAL_AXIS_Y],
-                   (unsigned long)g_step_pulses[HAL_AXIS_Z],
-                   (unsigned long)g_step_pulses[HAL_AXIS_A]);
-            write_line(response);
-        } else if (line_status == UART_LINE_OVERFLOW) {
-            write_line("error: line overflow");
-        }
+    while (1) {
+        printf(SHELL_PROMPT);
+        fflush(stdout);
 
-        hal_poll();
-
-        if (MOCK_GCODE_STREAM[g_rx_pos] == '\0' && uart.rx_count == 0u && uart.line_len == 0u) {
+        if (!fgets(line, (int)sizeof(line), stdin)) {
+            printf("\n");
             break;
         }
+
+        /* Strip trailing newline / carriage-return */
+        size_t len = strlen(line);
+        while (len > 0u && (line[len - 1u] == '\n' || line[len - 1u] == '\r')) {
+            line[--len] = '\0';
+        }
+
+        if (len == 0u) {
+            continue;
+        }
+
+        if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) {
+            break;
+        }
+
+        memset(g_step_pulses, 0, sizeof(g_step_pulses));
+        memset(g_dir_changes, 0, sizeof(g_dir_changes));
+
+        char response[SHELL_RESPONSE_MAX];
+        const gcode_status_t st =
+            serial_gcode_bridge_process_line(&bridge, line, response, SHELL_RESPONSE_MAX);
+        if (st != GCODE_OK) {
+            hal_stepper_enable(false);
+        }
+
+        printf("MCU [stepper]: dir_changes[X=%lu Y=%lu Z=%lu A=%lu]"
+               " pulses[X=%lu Y=%lu Z=%lu A=%lu]\n",
+               (unsigned long)g_dir_changes[HAL_AXIS_X],
+               (unsigned long)g_dir_changes[HAL_AXIS_Y],
+               (unsigned long)g_dir_changes[HAL_AXIS_Z],
+               (unsigned long)g_dir_changes[HAL_AXIS_A],
+               (unsigned long)g_step_pulses[HAL_AXIS_X],
+               (unsigned long)g_step_pulses[HAL_AXIS_Y],
+               (unsigned long)g_step_pulses[HAL_AXIS_Z],
+               (unsigned long)g_step_pulses[HAL_AXIS_A]);
+        write_line(response);
+
+        hal_poll();
     }
 
-    printf("Simulation done. motor_enabled=%s\n", g_motor_enabled ? "true" : "false");
+    printf("Session ended. motor_enabled=%s\n", g_motor_enabled ? "true" : "false");
     return 0;
 }
