@@ -20,7 +20,7 @@ Driver setup and flashing details: `docs/driversetup.md`
 STM32G474 board-support/peripheral/HAL glue stack: `docs/stm32g474_driver_stack.md`
 
 ## POSIX Serial Console Simulation
-To preview what UART communication looks like on a host machine (instead of STM32 hardware), run:
+To run an interactive G-code shell on a host machine (instead of STM32 hardware), build and launch:
 
 ```bash
 cd <repo-root>
@@ -31,11 +31,10 @@ gcc -Wall -Werror -pedantic -std=c99 -g \
 /tmp/posix_serial_console_sim
 ```
 
-This prints:
-- startup text (`CNC ready`)
-- `HOST -> MCU` G-code lines
-- `MCU -> HOST` UART responses (`OK` / `error`)
-- stepper activity logs for each command
+The shell waits for commands at the `gcode> ` prompt:
+- Type any G-code command (e.g. `G0 X10 Y20`) and press Enter.
+- The MCU UART response (`OK` / `error`) and stepper activity are printed after each command.
+- Type `quit` or `exit` (or press Ctrl-D) to end the session.
 
 
 ## Features
