@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "../src/serial_gcode_bridge.h"
+#include "../src/serial_uart.h"
 #include "../src/hal.h"
 #include "../src/kinematics.h"
 
@@ -10,6 +11,11 @@ static bool mock_motor_enabled = false;
 static uint32_t mock_pulse_counts[HAL_AXIS_MAX];
 static uint32_t mock_dir_set_counts[HAL_AXIS_MAX];
 static uint32_t mock_time_us = 0;
+static uint8_t mock_rx_bytes[UART_RX_BUFFER_SIZE];
+static size_t mock_rx_len = 0u;
+static size_t mock_rx_pos = 0u;
+static char mock_tx_text[512];
+static size_t mock_tx_len = 0u;
 
 hal_status_t hal_init(void) { return HAL_OK; }
 void hal_start(void) {}
@@ -19,18 +25,29 @@ uint32_t hal_micros(void) { return mock_time_us; }
 void hal_delay_ms(uint32_t ms) { mock_time_us += (ms * 1000u); }
 size_t hal_serial_read(hal_port_t port, uint8_t *dst, size_t cap) {
     (void)port;
-    (void)dst;
-    (void)cap;
-    return 0;
+    if (!dst || cap == 0u || mock_rx_pos >= mock_rx_len) {
+        return 0u;
+    }
+    const size_t remaining = mock_rx_len - mock_rx_pos;
+    const size_t to_copy = (remaining < cap) ? remaining : cap;
+    memcpy(dst, &mock_rx_bytes[mock_rx_pos], to_copy);
+    mock_rx_pos += to_copy;
+    return to_copy;
 }
 size_t hal_serial_write(hal_port_t port, const uint8_t *src, size_t len) {
     (void)port;
-    (void)src;
-    return len;
+    if (!src || len == 0u || mock_tx_len >= sizeof(mock_tx_text) - 1u) {
+        return 0u;
+    }
+    const size_t remaining = (sizeof(mock_tx_text) - 1u) - mock_tx_len;
+    const size_t to_copy = (len < remaining) ? len : remaining;
+    memcpy(&mock_tx_text[mock_tx_len], src, to_copy);
+    mock_tx_len += to_copy;
+    mock_tx_text[mock_tx_len] = '\0';
+    return to_copy;
 }
 size_t hal_serial_write_str(hal_port_t port, const char *s) {
-    (void)port;
-    return (s != NULL) ? strlen(s) : 0u;
+    return hal_serial_write(port, (const uint8_t *)s, (s != NULL) ? strlen(s) : 0u);
 }
 size_t hal_serial_encode32(hal_port_t port, const char *s) {
     (void)port;
@@ -71,6 +88,63 @@ static void reset_mocks(void) {
     memset(mock_pulse_counts, 0, sizeof(mock_pulse_counts));
     memset(mock_dir_set_counts, 0, sizeof(mock_dir_set_counts));
     mock_time_us = 0;
+    mock_rx_len = 0u;
+    mock_rx_pos = 0u;
+    mock_tx_len = 0u;
+    mock_tx_text[0] = '\0';
+}
+
+static void mock_uart_feed_text(const char *text) {
+    assert(text != NULL);
+    const size_t len = strlen(text);
+    assert(len <= sizeof(mock_rx_bytes));
+    memcpy(mock_rx_bytes, text, len);
+    mock_rx_len = len;
+    mock_rx_pos = 0u;
+}
+
+static void driver_write_line(const char *msg) {
+    hal_serial_write_str(HAL_PORT_GCODE, msg);
+    hal_serial_write_str(HAL_PORT_GCODE, "\r\n");
+}
+
+typedef struct {
+    serial_uart_t uart;
+    serial_gcode_bridge_t bridge;
+} driver_runtime_t;
+
+static void driver_runtime_init(driver_runtime_t *runtime) {
+    assert(runtime != NULL);
+    assert(hal_init() == HAL_OK);
+    hal_start();
+    serial_uart_init(&runtime->uart);
+    serial_gcode_bridge_init(&runtime->bridge);
+    driver_write_line("CNC ready");
+}
+
+static void driver_runtime_poll_once(driver_runtime_t *runtime) {
+    assert(runtime != NULL);
+    uint8_t rx_buf[32];
+    const size_t rx = hal_serial_read(HAL_PORT_GCODE, rx_buf, sizeof(rx_buf));
+    if (rx > 0u) {
+        serial_uart_rx_push(&runtime->uart, rx_buf, rx);
+    }
+
+    char line[UART_LINE_MAX + 1];
+    const uart_line_status_t line_status = serial_uart_read_line(&runtime->uart, line, sizeof(line));
+    if (line_status == UART_LINE_READY) {
+        char response[80];
+        const gcode_status_t status =
+            serial_gcode_bridge_process_line(&runtime->bridge, line, response, sizeof(response));
+        if (status != GCODE_OK) {
+            hal_stepper_enable(false);
+        }
+        driver_write_line(response);
+    } else if (line_status == UART_LINE_OVERFLOW) {
+        driver_write_line("error: line overflow");
+    }
+
+    hal_poll();
 }
 
 static void test_g0_motion_emits_ok_and_steps(void) {
@@ -115,11 +189,30 @@ static void test_invalid_line_returns_error(void) {
     assert(strncmp(response, "error:", 6) == 0);
 }
 
+static void test_driver_startup_and_mock_gcode_over_uart(void) {
+    reset_mocks();
+    mock_uart_feed_text("M17\nG0 X1 Y1\nM18\n");
+
+    driver_runtime_t runtime;
+    driver_runtime_init(&runtime);
+    for (size_t i = 0; i < 16u; ++i) {
+        driver_runtime_poll_once(&runtime);
+    }
+
+    assert(strncmp(mock_tx_text, "CNC ready\r\n", strlen("CNC ready\r\n")) == 0);
+    assert(strstr(mock_tx_text, "OK\r\n") != NULL);
+    assert(mock_pulse_counts[HAL_AXIS_X] > 0u);
+    assert(mock_pulse_counts[HAL_AXIS_Y] > 0u);
+    assert(!mock_motor_enabled);
+    assert(mock_time_us > 0u);
+}
+
 int main(void) {
     printf("Running serial gcode bridge tests...\n");
     test_g0_motion_emits_ok_and_steps();
     test_enable_disable_commands();
     test_invalid_line_returns_error();
+    test_driver_startup_and_mock_gcode_over_uart();
     printf("All serial gcode bridge tests passed!\n");
     return 0;
 }

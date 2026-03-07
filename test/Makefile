@@ -25,7 +25,7 @@ STEPPER_OBJS = $(BUILD_DIR)/stepper.o $(BUILD_DIR)/planner.o $(BUILD_DIR)/steppe
 CLI_OBJS = $(BUILD_DIR)/terminal_cli.o $(BUILD_DIR)/kin_corexy.o $(BUILD_DIR)/gcode.o $(BUILD_DIR)/arc.o $(BUILD_DIR)/kinematics.o $(BUILD_DIR)/terminal_cli_test.o
 PROTOCOL_OBJS = $(BUILD_DIR)/protocol.o $(BUILD_DIR)/protocol_test.o
 UART_OBJS = $(BUILD_DIR)/serial_uart.o $(BUILD_DIR)/serial_uart_test.o
-BRIDGE_OBJS = $(BUILD_DIR)/serial_gcode_bridge.o $(BUILD_DIR)/gcode.o $(BUILD_DIR)/arc.o $(BUILD_DIR)/kinematics.o $(BUILD_DIR)/serial_gcode_bridge_test.o
+BRIDGE_OBJS = $(BUILD_DIR)/serial_gcode_bridge.o $(BUILD_DIR)/serial_uart.o $(BUILD_DIR)/gcode.o $(BUILD_DIR)/arc.o $(BUILD_DIR)/kinematics.o $(BUILD_DIR)/serial_gcode_bridge_test.o
 
 # Default target
 all: dirs $(TEST_TARGET) $(PLANNER_TEST_TARGET) $(GCODE_TEST_TARGET) $(STEPPER_TEST_TARGET) $(CLI_TEST_TARGET) $(PROTOCOL_TEST_TARGET) $(UART_TEST_TARGET) $(BRIDGE_TEST_TARGET)
