@@ -20,6 +20,7 @@ static size_t g_uart_line_len = 0u;
 static bool g_motor_enabled = false;
 static uint32_t g_step_pulses[HAL_AXIS_MAX];
 static uint32_t g_dir_changes[HAL_AXIS_MAX];
+static const size_t max_simulation_iterations = 128u;
 
 hal_status_t hal_init(void) { return HAL_OK; }
 void hal_start(void) {}
@@ -131,7 +132,7 @@ int main(void) {
     printf("HOST -> MCU script:\n%s\n", MOCK_GCODE_STREAM);
     write_line("CNC ready");
 
-    for (size_t i = 0; i < 128u; ++i) {
+    for (size_t i = 0; i < max_simulation_iterations; ++i) {
         uint8_t rx_buf[32];
         const size_t rx = hal_serial_read(HAL_PORT_GCODE, rx_buf, sizeof(rx_buf));
         if (rx > 0u) {

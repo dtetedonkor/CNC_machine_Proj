@@ -23,7 +23,7 @@ STM32G474 board-support/peripheral/HAL glue stack: `docs/stm32g474_driver_stack.
 To preview what UART communication looks like on a host machine (instead of STM32 hardware), run:
 
 ```bash
-cd /home/runner/work/CNC_machine_Proj/CNC_machine_Proj
+cd <repo-root>
 gcc -Wall -Werror -pedantic -std=c99 -g \
   examples/posix_serial_console_sim.c \
   src/serial_uart.c src/serial_gcode_bridge.c src/gcode.c src/arc.c src/kinematics.c \
