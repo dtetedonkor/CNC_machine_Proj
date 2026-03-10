@@ -34,6 +34,27 @@ drivers/stm32g474/
 
 Core modules should continue to use only `src/hal.h` and never include libopencm3 headers directly.
 
+## Driver responsibilities (STM32G474)
+
+The STM32G474 driver layer in this repository is intentionally a hardware adapter (not a CNC logic layer):
+
+1. **Hardware initialization**
+   - `hal_init()` wires boot order through board/peripheral init functions (`board_init_*`, `drv_*_init`).
+2. **UART communication**
+   - `drv_uart` handles USART1 setup, RX IRQ buffering, and TX write.
+3. **Stepper signal control**
+   - `drv_gpio` owns STEP/DIR/EN pin writes.
+4. **Accurate step timing**
+   - `drv_stepper_timer` (TIM6 tick ISR) clears previous pulses and emits next-step masks.
+5. **Safety input monitoring**
+   - Inputs are sampled via `drv_gpio_read_inputs_raw` / `drv_inputs`.
+   - TIM6 ISR now also gates pulse generation on limit/E-stop activity and forces driver disable.
+
+### What the driver does not do
+
+The driver layer does **not** parse G-code, plan paths, or compute feed/acceleration math.
+Those behaviors remain in core modules (`protocol`, `gcode`, planner/kinematics/stepper logic).
+
 ## Board pin map (`board/board_pins.h`)
 
 Logical outputs exposed to the core:

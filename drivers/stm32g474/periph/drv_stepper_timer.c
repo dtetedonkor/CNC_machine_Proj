@@ -8,6 +8,8 @@
 #include <libopencm3/stm32/timer.h>
 
 static drv_stepper_tick_cb_t g_step_cb = 0;
+static const uint32_t k_safety_input_mask =
+    BOARD_INPUT_BIT_LIMIT_X | BOARD_INPUT_BIT_LIMIT_Y | BOARD_INPUT_BIT_LIMIT_Z | BOARD_INPUT_BIT_ESTOP;
 
 void tim6_dac_isr(void) {
     if (timer_get_flag(BOARD_STEP_TIMER, TIM_SR_UIF) == 0) {
@@ -17,6 +19,11 @@ void tim6_dac_isr(void) {
     timer_clear_flag(BOARD_STEP_TIMER, TIM_SR_UIF);
 
     drv_gpio_clear_pending_steps();
+
+    if ((drv_gpio_read_inputs_raw() & k_safety_input_mask) != 0u) {
+        drv_gpio_stepper_enable(false);
+        return;
+    }
 
     if (g_step_cb != 0) {
         const uint32_t step_mask = g_step_cb();

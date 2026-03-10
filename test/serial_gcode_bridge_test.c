@@ -250,6 +250,20 @@ static void test_motion_aborts_on_estop_input(void) {
     assert(!mock_motor_enabled);
 }
 
+static void test_motion_aborts_on_limit_input(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    mock_inputs.limit_x = true;
+
+    char response[64];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "G0 X1", response, sizeof(response));
+    assert(st != GCODE_OK);
+    assert(strstr(response, "safety input active") != NULL);
+    assert(!mock_motor_enabled);
+}
+
 int main(void) {
     printf("Running serial gcode bridge tests...\n");
     test_g0_motion_emits_ok_and_steps();
@@ -258,6 +272,7 @@ int main(void) {
     test_driver_startup_and_mock_gcode_over_uart();
     test_xy_motion_uses_atomic_pulse_mask();
     test_motion_aborts_on_estop_input();
+    test_motion_aborts_on_limit_input();
     printf("All serial gcode bridge tests passed!\n");
     return 0;
 }
