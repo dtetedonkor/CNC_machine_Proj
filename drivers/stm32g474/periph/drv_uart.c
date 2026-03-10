@@ -47,6 +47,10 @@ void drv_uart_init(void) {
 }
 
 size_t drv_uart_read(uint8_t *dst, size_t cap) {
+    if (dst == NULL || cap == 0u) {
+        return 0u;
+    }
+
     size_t read = 0;
     uint16_t tail = g_rx_tail;
 

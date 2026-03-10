@@ -11,6 +11,8 @@ static bool mock_motor_enabled = false;
 static uint32_t mock_pulse_counts[HAL_AXIS_MAX];
 static uint32_t mock_dir_set_counts[HAL_AXIS_MAX];
 static uint32_t mock_time_us = 0;
+static hal_inputs_t mock_inputs = {0};
+static uint32_t mock_pulse_mask_calls = 0u;
 static uint8_t mock_rx_bytes[UART_RX_BUFFER_SIZE];
 static size_t mock_rx_len = 0u;
 static size_t mock_rx_pos = 0u;
@@ -72,7 +74,14 @@ void hal_stepper_set_dir(hal_axis_t axis, bool dir_positive) {
 }
 void hal_stepper_step_pulse(hal_axis_t axis) { mock_pulse_counts[axis]++; }
 void hal_stepper_step_clear(hal_axis_t axis) { (void)axis; }
-void hal_stepper_pulse_mask(uint32_t axis_mask) { (void)axis_mask; }
+void hal_stepper_pulse_mask(uint32_t axis_mask) {
+    mock_pulse_mask_calls++;
+    for (hal_axis_t axis = HAL_AXIS_X; axis < HAL_AXIS_MAX; axis++) {
+        if ((axis_mask & (1u << axis)) != 0u) {
+            mock_pulse_counts[axis]++;
+        }
+    }
+}
 void hal_spindle_set(hal_spindle_dir_t dir, float pwm_0_to_1) {
     (void)dir;
     (void)pwm_0_to_1;
@@ -81,7 +90,7 @@ void hal_coolant_mist(bool on) { (void)on; }
 void hal_coolant_flood(bool on) { (void)on; }
 void hal_read_inputs(hal_inputs_t *out) {
     if (out) {
-        memset(out, 0, sizeof(*out));
+        *out = mock_inputs;
     }
 }
 void hal_poll(void) { mock_time_us++; }
@@ -96,6 +105,8 @@ static void reset_mocks(void) {
     mock_rx_pos = 0u;
     mock_tx_len = 0u;
     mock_tx_text[0] = '\0';
+    memset(&mock_inputs, 0, sizeof(mock_inputs));
+    mock_pulse_mask_calls = 0u;
 }
 
 static void mock_uart_feed_text(const char *text) {
@@ -211,12 +222,42 @@ static void test_driver_startup_and_mock_gcode_over_uart(void) {
     assert(mock_time_us > 0u);
 }
 
+static void test_xy_motion_uses_atomic_pulse_mask(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    char response[64];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "G0 X1 Y1", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+    assert(mock_pulse_mask_calls > 0u);
+    assert(mock_pulse_counts[HAL_AXIS_X] > 0u);
+    assert(mock_pulse_counts[HAL_AXIS_Y] > 0u);
+}
+
+static void test_motion_aborts_on_estop_input(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    mock_inputs.estop = true;
+
+    char response[64];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "G0 X1", response, sizeof(response));
+    assert(st != GCODE_OK);
+    assert(strstr(response, "safety input active") != NULL);
+    assert(!mock_motor_enabled);
+}
+
 int main(void) {
     printf("Running serial gcode bridge tests...\n");
     test_g0_motion_emits_ok_and_steps();
     test_enable_disable_commands();
     test_invalid_line_returns_error();
     test_driver_startup_and_mock_gcode_over_uart();
+    test_xy_motion_uses_atomic_pulse_mask();
+    test_motion_aborts_on_estop_input();
     printf("All serial gcode bridge tests passed!\n");
     return 0;
 }

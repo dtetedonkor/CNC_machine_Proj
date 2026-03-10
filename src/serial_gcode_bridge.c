@@ -38,7 +38,7 @@ static void wait_us(uint32_t delay_us) {
     }
 }
 
-static void drive_xy_motion(serial_gcode_bridge_t *bridge,
+static bool drive_xy_motion(serial_gcode_bridge_t *bridge,
                             float start_x,
                             float start_y,
                             float end_x,
@@ -50,7 +50,7 @@ static void drive_xy_motion(serial_gcode_bridge_t *bridge,
     const uint32_t y_steps = (uint32_t)lroundf(fabsf(dy) * bridge->steps_per_mm[HAL_AXIS_Y]);
 
     if (x_steps == 0u && y_steps == 0u) {
-        return;
+        return true;
     }
 
     hal_stepper_enable(true);
@@ -60,19 +60,21 @@ static void drive_xy_motion(serial_gcode_bridge_t *bridge,
     if (x_steps >= y_steps) {
         uint32_t err = x_steps / 2u;
         for (uint32_t i = 0; i < x_steps; i++) {
-            hal_stepper_step_pulse(HAL_AXIS_X);
+            uint32_t pulse_mask = (1u << HAL_AXIS_X);
 
             err += y_steps;
             const bool pulse_y = (err >= x_steps && y_steps > 0u);
             if (pulse_y) {
-                hal_stepper_step_pulse(HAL_AXIS_Y);
+                pulse_mask |= (1u << HAL_AXIS_Y);
                 err -= x_steps;
             }
 
+            hal_stepper_pulse_mask(pulse_mask);
             wait_us(bridge->step_pulse_delay_us);
-            hal_stepper_step_clear(HAL_AXIS_X);
-            if (pulse_y) {
-                hal_stepper_step_clear(HAL_AXIS_Y);
+            for (hal_axis_t axis = HAL_AXIS_X; axis < HAL_AXIS_MAX; axis++) {
+                if ((pulse_mask & (1u << axis)) != 0u) {
+                    hal_stepper_step_clear(axis);
+                }
             }
 
             hal_poll();
@@ -80,25 +82,27 @@ static void drive_xy_motion(serial_gcode_bridge_t *bridge,
             hal_read_inputs(&inputs);
             if (inputs.estop || inputs.limit_x || inputs.limit_y || inputs.limit_z) {
                 hal_stepper_enable(false);
-                return;
+                return false;
             }
         }
     } else {
         uint32_t err = y_steps / 2u;
         for (uint32_t i = 0; i < y_steps; i++) {
-            hal_stepper_step_pulse(HAL_AXIS_Y);
+            uint32_t pulse_mask = (1u << HAL_AXIS_Y);
 
             err += x_steps;
             const bool pulse_x = (err >= y_steps && x_steps > 0u);
             if (pulse_x) {
-                hal_stepper_step_pulse(HAL_AXIS_X);
+                pulse_mask |= (1u << HAL_AXIS_X);
                 err -= y_steps;
             }
 
+            hal_stepper_pulse_mask(pulse_mask);
             wait_us(bridge->step_pulse_delay_us);
-            hal_stepper_step_clear(HAL_AXIS_Y);
-            if (pulse_x) {
-                hal_stepper_step_clear(HAL_AXIS_X);
+            for (hal_axis_t axis = HAL_AXIS_X; axis < HAL_AXIS_MAX; axis++) {
+                if ((pulse_mask & (1u << axis)) != 0u) {
+                    hal_stepper_step_clear(axis);
+                }
             }
 
             hal_poll();
@@ -106,10 +110,12 @@ static void drive_xy_motion(serial_gcode_bridge_t *bridge,
             hal_read_inputs(&inputs);
             if (inputs.estop || inputs.limit_x || inputs.limit_y || inputs.limit_z) {
                 hal_stepper_enable(false);
-                return;
+                return false;
             }
         }
     }
+
+    return true;
 }
 
 void serial_gcode_bridge_init(serial_gcode_bridge_t *bridge) {
@@ -158,7 +164,10 @@ gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
     float end_x = 0.0f;
     float end_y = 0.0f;
     gcode_get_position(&bridge->gcode, &end_x, &end_y);
-    drive_xy_motion(bridge, start_x, start_y, end_x, end_y);
+    if (!drive_xy_motion(bridge, start_x, start_y, end_x, end_y)) {
+        snprintf(response, response_len, "error: safety input active");
+        return GCODE_ERR_INVALID_TARGET;
+    }
 
     snprintf(response, response_len, "OK");
     return GCODE_OK;
