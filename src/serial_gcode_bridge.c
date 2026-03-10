@@ -38,6 +38,14 @@ static void wait_us(uint32_t delay_us) {
     }
 }
 
+static void clear_axes_by_mask(uint32_t axis_mask) {
+    for (hal_axis_t axis = HAL_AXIS_X; axis < HAL_AXIS_MAX; axis++) {
+        if ((axis_mask & (1u << axis)) != 0u) {
+            hal_stepper_step_clear(axis);
+        }
+    }
+}
+
 static bool drive_xy_motion(serial_gcode_bridge_t *bridge,
                             float start_x,
                             float start_y,
@@ -71,11 +79,7 @@ static bool drive_xy_motion(serial_gcode_bridge_t *bridge,
 
             hal_stepper_pulse_mask(pulse_mask);
             wait_us(bridge->step_pulse_delay_us);
-            for (hal_axis_t axis = HAL_AXIS_X; axis < HAL_AXIS_MAX; axis++) {
-                if ((pulse_mask & (1u << axis)) != 0u) {
-                    hal_stepper_step_clear(axis);
-                }
-            }
+            clear_axes_by_mask(pulse_mask);
 
             hal_poll();
             hal_inputs_t inputs;
@@ -99,11 +103,7 @@ static bool drive_xy_motion(serial_gcode_bridge_t *bridge,
 
             hal_stepper_pulse_mask(pulse_mask);
             wait_us(bridge->step_pulse_delay_us);
-            for (hal_axis_t axis = HAL_AXIS_X; axis < HAL_AXIS_MAX; axis++) {
-                if ((pulse_mask & (1u << axis)) != 0u) {
-                    hal_stepper_step_clear(axis);
-                }
-            }
+            clear_axes_by_mask(pulse_mask);
 
             hal_poll();
             hal_inputs_t inputs;
