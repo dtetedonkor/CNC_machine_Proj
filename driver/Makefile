@@ -27,7 +27,7 @@ SRCS := \
 obj_for = $(BUILD)/$(subst /,_,$(basename $(1))).o
 OBJS := $(foreach src,$(SRCS),$(call obj_for,$(src)))
 
-# Cortex-M4F (STM32G491RE)
+# Cortex-M4F (STM32G474RE)
 CPUFLAGS = -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 
 CFLAGS  += -O0 -g3 -Wall -Wextra
@@ -40,7 +40,7 @@ CFLAGS  += -DSTM32G4
 
 # Generic libopencm3 linker script + our memory layout
 GENERIC_LD := $(LIBOPENCM3_DIR)/lib/cortex-m-generic.ld
-MEMORY_LD  := stm32g491re-memory.ld
+MEMORY_LD  := stm32g474re-memory.ld
 
 LDFLAGS += -T$(MEMORY_LD) -T$(GENERIC_LD)
 LDFLAGS += -nostartfiles
