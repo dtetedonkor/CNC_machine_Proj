@@ -51,13 +51,12 @@ openocd --version
 
 ---
 
-## 2) Get libopencm3 submodule
+## 2) Initialize repository
 
 From repository root:
 
 ```bash
 cd <repository_root>
-git submodule update --init --recursive
 ```
 
 ---
@@ -68,52 +67,27 @@ You can build the core support library from repository root:
 
 ```bash
 cd <repository_root>
-make libopencm3
-```
-
-This uses the top-level `Makefile` and builds the STM32G4 family target in:
-
-- `lib/libopencm3`
-
-Optional (host-side static core library via CMake):
-
-```bash
-cd <repository_root>
 cmake -S . -B /tmp/cnc-core-build
 cmake --build /tmp/cnc-core-build
 ```
 
+This builds the host-side static core library.
+
 ---
 
-## 4) Build the STM32 driver firmware
+## 4) Build the STM32 HAL firmware
 
-```bash
-cd <repository_root>/driver
-make clean
-make
-```
+The firmware source in this repository is at:
 
-Expected outputs:
+- `<repository_root>/drivers/main.c`
 
-- `<repository_root>/driver/build/cnc_uart_gcode.elf`
-- `<repository_root>/driver/build/cnc_uart_gcode.bin`
-
-The linker script starts firmware at internal flash base address:
-
-- `0x08000000`
+Build this file using your STM32 HAL project/tooling (for example STM32CubeIDE or a CubeMX-generated HAL project configured for STM32G491RE/STM32G474).
 
 ---
 
 ## 5) Flash firmware to STM32G474VE using ST-LINK (SWD)
 
-Connect ST-LINK to board SWD signals, then run:
-
-```bash
-cd <repository_root>/driver
-make flash
-```
-
-This runs OpenOCD and programs/verifies/resets the target.
+Connect ST-LINK to board SWD signals, then flash the HAL project output (`.elf`/`.bin`) using your normal STM32 flow (STM32CubeProgrammer, STM32CubeIDE, or OpenOCD).
 
 If Linux permission errors occur, add ST-LINK udev rule (see `docs/driversetup.md`) and reconnect ST-LINK.
 
@@ -121,16 +95,13 @@ If Linux permission errors occur, add ST-LINK udev rule (see `docs/driversetup.m
 
 ## 6) Post-flash smoke test (recommended)
 
-Use UART as a separate connection from SWD for G-code commands.
+Use UART as a separate connection from SWD.
 
 1. Open serial terminal at `115200 8N1`.
 2. Reset/power cycle board.
-3. Confirm startup message:
-   - `CNC ready`
-4. Send simple commands:
-   - `M17` (enable drivers) -> expect `OK`
-   - `G0 X1` -> expect `OK` and observe STEP/DIR activity
-   - `M18` (disable drivers) -> expect `OK`
+3. Confirm recurring UART output:
+   - `Hello World`
+4. Confirm line repeats at `115200 8N1` approximately once per second.
 
 ---
 
@@ -140,7 +111,5 @@ Before full machining flow, validate in this order:
 
 1. SWD flash works repeatedly.
 2. UART terminal communication is stable.
-3. Driver enable pin (`DRV_EN`) toggles correctly.
-4. One axis direction pin toggles correctly.
-5. One axis STEP pulse train is observable on scope/logic analyzer.
-6. Then run multi-axis and full G-code tests.
+3. UART output repeats once per second.
+4. Clock and reset behavior are stable across power cycles.

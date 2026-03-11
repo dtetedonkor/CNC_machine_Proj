@@ -1,47 +1,12 @@
-# STM32G474 linker scripts
+# STM32G474 linker configuration
 
-This project links STM32G4 firmware with:
+Linker scripts are now managed by the STM32 HAL project/toolchain you use to build firmware.
 
-1. A **project memory layout script** (default `driver/stm32g491re-memory.ld`)
-2. The **generic libopencm3 Cortex-M script** (`lib/libopencm3/lib/cortex-m-generic.ld`)
+For STM32G491RE/STM32G474-family targets, ensure your HAL project linker settings match your board memory map.
 
-The driver `Makefile` passes both scripts to the linker:
+## Recommended checks
 
-```make
-LDFLAGS += -T$(MEMORY_LD) -T$(GENERIC_LD)
-```
-
-## Script in this repository
-
-### `driver/stm32g491re-memory.ld` (default)
-
-```ld
-/* STM32G491RE: 512K Flash, 112K SRAM */
-MEMORY
-{
-  rom (rx)  : ORIGIN = 0x08000000, LENGTH = 512K
-  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 112K
-}
-```
-
-This file defines the physical memory regions used by `.text`, `.data`, `.bss`, stack, and heap placement from the generic Cortex-M linker script.
-
-## Build usage
-
-From the repository root:
-
-```bash
-cd driver
-make clean
-make
-```
-
-The firmware build now defaults to:
-
-```make
-MEMORY_LD ?= stm32g491re-memory.ld
-```
-
-## If your exact STM32G4 variant differs
-
-If you use a part with a different Flash/SRAM size than `STM32G491RE`, duplicate `stm32g491re-memory.ld`, update `LENGTH` fields, and point `MEMORY_LD` in `driver/Makefile` to the new file (or override `MEMORY_LD` at make time).
+1. Verify flash origin and size for your exact MCU variant.
+2. Verify SRAM origin and size for your exact MCU variant.
+3. Keep startup file, linker script, and clock configuration aligned to the same MCU part number.
+4. Re-verify after changing package variant or stepping to a different STM32G4 part.
