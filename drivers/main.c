@@ -31,6 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+/* 127 chars + NUL terminator for a simple UART shell line. */
 #define RX_LINE_SIZE 128u
 #define SHELL_TX_TIMEOUT_MS 1000u
 
@@ -45,7 +46,7 @@
 UART_HandleTypeDef hlpuart1;
 
 /* USER CODE BEGIN PV */
-uint8_t rx_byte;
+volatile uint8_t rx_byte;
 char rx_line[RX_LINE_SIZE];
 volatile uint8_t rx_index = 0;
 volatile uint8_t command_ready = 0;
@@ -305,6 +306,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   {
     char c = (char)rx_byte;
     uint8_t is_newline = 0;
+    uint8_t skip_char = 0;
 
     if (c == '\r')
     {
@@ -316,16 +318,19 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       if (last_char_was_cr)
       {
         last_char_was_cr = 0;
-        goto rearm_rx;
+        skip_char = 1;
       }
-      is_newline = 1;
+      else
+      {
+        is_newline = 1;
+      }
     }
     else
     {
       last_char_was_cr = 0;
     }
 
-    if (!command_ready)
+    if (!skip_char && !command_ready)
     {
       if (is_newline)
       {
@@ -364,7 +369,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       }
     }
 
-rearm_rx:
     if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
     {
       rx_restart_error = 1;
