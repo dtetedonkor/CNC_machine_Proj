@@ -56,7 +56,7 @@ openocd --version
 From repository root:
 
 ```bash
-cd /home/runner/work/CNC_machine_Proj/CNC_machine_Proj
+cd <repository_root>
 git submodule update --init --recursive
 ```
 
@@ -67,7 +67,7 @@ git submodule update --init --recursive
 You can build the core support library from repository root:
 
 ```bash
-cd /home/runner/work/CNC_machine_Proj/CNC_machine_Proj
+cd <repository_root>
 make libopencm3
 ```
 
@@ -78,7 +78,7 @@ This uses the top-level `Makefile` and builds the STM32G4 family target in:
 Optional (host-side static core library via CMake):
 
 ```bash
-cd /home/runner/work/CNC_machine_Proj/CNC_machine_Proj
+cd <repository_root>
 cmake -S . -B /tmp/cnc-core-build
 cmake --build /tmp/cnc-core-build
 ```
@@ -88,15 +88,15 @@ cmake --build /tmp/cnc-core-build
 ## 4) Build the STM32 driver firmware
 
 ```bash
-cd /home/runner/work/CNC_machine_Proj/CNC_machine_Proj/driver
+cd <repository_root>/driver
 make clean
 make
 ```
 
 Expected outputs:
 
-- `/home/runner/work/CNC_machine_Proj/CNC_machine_Proj/driver/build/cnc_uart_gcode.elf`
-- `/home/runner/work/CNC_machine_Proj/CNC_machine_Proj/driver/build/cnc_uart_gcode.bin`
+- `<repository_root>/driver/build/cnc_uart_gcode.elf`
+- `<repository_root>/driver/build/cnc_uart_gcode.bin`
 
 The linker script starts firmware at internal flash base address:
 
@@ -109,7 +109,7 @@ The linker script starts firmware at internal flash base address:
 Connect ST-LINK to board SWD signals, then run:
 
 ```bash
-cd /home/runner/work/CNC_machine_Proj/CNC_machine_Proj/driver
+cd <repository_root>/driver
 make flash
 ```
 
