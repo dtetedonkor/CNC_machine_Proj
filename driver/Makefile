@@ -70,9 +70,11 @@ all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).bin
 libopencm3:
 	$(MAKE) -C $(LIBOPENCM3_DIR) TARGETS='stm32/g4' PREFIX=$(TOOLCHAIN)-
 
-grbl:
+$(GRBL_BUILD)/CMakeCache.txt: $(TOP)/CMakeLists.txt $(GRBL_TOOLCHAIN)
 	cmake -S $(TOP) -B $(GRBL_BUILD) \
 		-DCMAKE_TOOLCHAIN_FILE=$(GRBL_TOOLCHAIN)
+
+grbl: $(GRBL_BUILD)/CMakeCache.txt
 	cmake --build $(GRBL_BUILD) --target grbl
 
 $(BUILD):
