@@ -26,6 +26,7 @@ drivers/stm32g474/
   periph/drv_inputs.[ch]
   periph/drv_stepper_timer.[ch]
   hal/hal_impl.c
+  hal/axis_motion.[ch]
 ```
 
 ## HAL boundary contract
@@ -33,6 +34,27 @@ drivers/stm32g474/
 `drivers/stm32g474/hal/hal_impl.c` implements `src/hal.h` and is the only place core code touches platform behavior.
 
 Core modules should continue to use only `src/hal.h` and never include libopencm3 headers directly.
+
+## Driver responsibilities (STM32G474)
+
+The STM32G474 driver layer in this repository is intentionally a hardware adapter (not a CNC logic layer):
+
+1. **Hardware initialization**
+   - `hal_init()` wires boot order through board/peripheral init functions (`board_init_*`, `drv_*_init`).
+2. **UART communication**
+   - `drv_uart` handles USART1 setup, RX IRQ buffering, and TX write.
+3. **Stepper signal control**
+   - `drv_gpio` owns STEP/DIR/EN pin writes.
+4. **Accurate step timing**
+   - `drv_stepper_timer` (TIM6 tick ISR) clears previous pulses and emits next-step masks.
+5. **Safety input monitoring**
+   - Inputs are sampled via `drv_gpio_read_inputs_raw` / `drv_inputs`.
+   - TIM6 ISR now also gates pulse generation on limit/E-stop activity and forces driver disable.
+
+### What the driver does not do
+
+The driver layer does **not** parse G-code, plan paths, or compute feed/acceleration math.
+Those behaviors remain in core modules (`protocol`, `gcode`, planner/kinematics/stepper logic).
 
 ## Board pin map (`board/board_pins.h`)
 
@@ -68,6 +90,10 @@ The initial implementation uses a fixed tick timer (`TIM6`) with `BOARD_STEP_TIC
 4. Pins are lowered on the next tick, guaranteeing pulse width equal to one tick period.
 
 This matches the recommended v1 strategy and keeps ISR work bounded.
+
+`driver/main.c` now overrides `core_step_tick_isr()` and routes step generation through
+`drivers/stm32g474/hal/axis_motion.[ch]`, so STEP output is timer-driven for TMC2209
+instead of using blocking delay loops in the driver main loop.
 
 ## Step generation evolution path
 

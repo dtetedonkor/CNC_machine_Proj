@@ -17,6 +17,7 @@ Firmware takes gcode and converts it into pwm motor controls
 - `hal` as the platform-specific GPIO/timer/serial boundary
 
 Driver setup and flashing details: `docs/driversetup.md`
+Step-by-step custom STM32G474VE build + flash workflow: `docs/build_and_flash_custom_stm32g474ve.md`
 STM32G474 board-support/peripheral/HAL glue stack: `docs/stm32g474_driver_stack.md`
 
 ## POSIX Serial Console Simulation
