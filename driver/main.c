@@ -63,8 +63,9 @@ int main(void) {
     uint32_t last_ready_ms = hal_millis();
 
     while (1) {
-        if ((hal_millis() - last_ready_ms) >= 1000u) {
-            last_ready_ms = hal_millis();
+        const uint32_t now_ms = hal_millis();
+        if ((now_ms - last_ready_ms) >= 1000u) {
+            last_ready_ms = now_ms;
             write_line("CNC ready");
         }
 

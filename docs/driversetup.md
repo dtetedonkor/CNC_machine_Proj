@@ -84,7 +84,7 @@ int main(void) {
 }
 ```
 
-## `driver/stm32g474re-memory.ld`
+## `driver/stm32g491re-memory.ld`
 
 ```ld
 /* STM32G491RE: 512K Flash, 112K SRAM */
