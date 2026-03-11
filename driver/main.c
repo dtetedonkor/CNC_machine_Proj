@@ -60,12 +60,21 @@ int main(void) {
     serial_gcode_bridge_set_motion_backend(&bridge, timer_motion_backend, &g_axis_motion);
 
     write_line("CNC ready");
+    uint32_t last_ready_ms = hal_millis();
+    bool awaiting_host_input = true;
 
     while (1) {
         uint8_t rx_buf[32];
         const size_t rx = hal_serial_read(HAL_PORT_GCODE, rx_buf, sizeof(rx_buf));
         if (rx > 0u) {
+            awaiting_host_input = false;
             serial_uart_rx_push(&uart, rx_buf, rx);
+        }
+
+        const uint32_t now_ms = hal_millis();
+        if (awaiting_host_input && ((now_ms - last_ready_ms) >= 1000u)) {
+            last_ready_ms = now_ms;
+            write_line("CNC ready");
         }
 
         char line[UART_LINE_MAX + 1];

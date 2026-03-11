@@ -84,14 +84,14 @@ int main(void) {
 }
 ```
 
-## `driver/stm32g474re-memory.ld`
+## `driver/stm32g491re-memory.ld`
 
 ```ld
-/* STM32G474RE: 512K Flash, 128K SRAM */
+/* STM32G491RE: 512K Flash, 112K SRAM */
 MEMORY
 {
   rom (rx)  : ORIGIN = 0x08000000, LENGTH = 512K
-  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 128K
+  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 112K
 }
 ```
 
@@ -112,7 +112,7 @@ BUILD  := build
 SRCS := main.c
 OBJS := $(SRCS:%.c=$(BUILD)/%.o)
 
-# Cortex-M4F (STM32G474RE)
+# Cortex-M4F (STM32G491RE / STM32G4 family)
 CPUFLAGS = -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 
 CFLAGS  += -O0 -g3 -Wall -Wextra
@@ -123,7 +123,7 @@ CFLAGS  += -DSTM32G4
 
 # Generic libopencm3 linker script + our memory layout
 GENERIC_LD := $(LIBOPENCM3_DIR)/lib/cortex-m-generic.ld
-MEMORY_LD  := stm32g474re-memory.ld
+MEMORY_LD  ?= stm32g491re-memory.ld
 
 LDFLAGS += -T$(MEMORY_LD) -T$(GENERIC_LD)
 LDFLAGS += -nostartfiles

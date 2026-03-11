@@ -63,7 +63,7 @@ Logical outputs exposed to the core:
 - `X/Y/Z/A STEP`
 - `X/Y/Z/A DIR`
 - `DRV_EN`
-- UART (`USART1`)
+- UART (`USART2` on `PA2/PA3` for Nucleo ST-LINK VCP)
 - Conditioned inputs (`E-stop`, `limit x/y/z`, `hand`)
 
 The board map is centralized in `board_pins.h` so core code uses axis/input abstractions, not raw MCU pin names.
