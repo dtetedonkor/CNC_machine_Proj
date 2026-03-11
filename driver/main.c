@@ -64,7 +64,7 @@ int main(void) {
 
     while (1) {
         if ((hal_millis() - last_ready_ms) >= 1000u) {
-            last_ready_ms += 1000u;
+            last_ready_ms = hal_millis();
             write_line("CNC ready");
         }
 
