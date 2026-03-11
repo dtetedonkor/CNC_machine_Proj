@@ -266,8 +266,7 @@ static void test_driver_ready_prints_until_host_input(void) {
     mock_uart_feed_text("M17\n");
     mock_time_us = 2000u * 1000u;
     driver_runtime_poll_once(&runtime);
-    assert(strncmp(mock_tx_text, "CNC ready\r\nCNC ready\r\nOK\r\n", strlen("CNC ready\r\nCNC ready\r\nOK\r\n")) == 0);
-    assert(strstr(mock_tx_text, "CNC ready\r\nCNC ready\r\nCNC ready\r\n") == NULL);
+    assert(strcmp(mock_tx_text, "CNC ready\r\nCNC ready\r\nOK\r\n") == 0);
 }
 
 static void test_xy_motion_uses_atomic_pulse_mask(void) {
