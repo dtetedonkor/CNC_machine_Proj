@@ -6,11 +6,12 @@ The current embedded bring-up source in-repo is:
 
 - `drivers/main.c`
 
-That file is an STM32 HAL UART smoke test which transmits:
+That file is an STM32 HAL UART command shell that:
 
-- `Hello World\r\n`
-
-at `115200 8N1` in a loop.
+- prints a boot banner (`STM32 shell ready`)
+- prints a prompt (`> `)
+- accepts line input over UART
+- replies with `ok`, `status: shell alive`, or simple help text
 
 ## Quick verification flow
 
@@ -18,7 +19,11 @@ at `115200 8N1` in a loop.
 2. Use `drivers/main.c` as the application source.
 3. Build and flash to STM32G491RE/STM32G474-family hardware.
 4. Open a serial terminal at `115200 8N1`.
-5. Confirm `Hello World` repeats about once per second.
+5. Confirm the shell banner appears:
+   - `STM32 shell ready`
+6. Confirm prompt appears:
+   - `> `
+7. Type `help` + Enter and verify command response + `ok`.
 
 ## Notes
 

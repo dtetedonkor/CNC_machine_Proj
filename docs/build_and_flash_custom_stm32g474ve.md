@@ -99,9 +99,14 @@ Use UART as a separate connection from SWD.
 
 1. Open serial terminal at `115200 8N1`.
 2. Reset/power cycle board.
-3. Confirm recurring UART output:
-   - `Hello World`
-4. Confirm line repeats at `115200 8N1` approximately once per second.
+3. Confirm shell banner appears:
+   - `STM32 shell ready`
+4. Confirm prompt appears:
+   - `> `
+5. Type `help` and press Enter, then verify:
+   - echo line `[RX] help`
+   - `commands: help, $, gcode lines`
+   - `ok`
 
 ---
 
