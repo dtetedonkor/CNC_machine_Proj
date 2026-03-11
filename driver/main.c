@@ -60,8 +60,14 @@ int main(void) {
     serial_gcode_bridge_set_motion_backend(&bridge, timer_motion_backend, &g_axis_motion);
 
     write_line("CNC ready");
+    uint32_t last_ready_ms = hal_millis();
 
     while (1) {
+        if ((hal_millis() - last_ready_ms) >= 1000u) {
+            last_ready_ms += 1000u;
+            write_line("CNC ready");
+        }
+
         uint8_t rx_buf[32];
         const size_t rx = hal_serial_read(HAL_PORT_GCODE, rx_buf, sizeof(rx_buf));
         if (rx > 0u) {
