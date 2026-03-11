@@ -17,14 +17,11 @@ LIBOPENCM3_DIR := $(TOP)/lib/libopencm3
 
 TARGET := cnc_uart_gcode
 BUILD  := build
+GRBL_BUILD := $(BUILD)-grbl
+GRBL_TOOLCHAIN := $(abspath $(TOP)/cmake/toolchains/arm-none-eabi-gcc.cmake)
 
 SRCS := \
 	main.c \
-	../src/serial_uart.c \
-	../src/serial_gcode_bridge.c \
-	../src/gcode.c \
-	../src/arc.c \
-	../src/kinematics.c \
 	../drivers/stm32g474/board/board_init.c \
 	../drivers/stm32g474/periph/drv_gpio.c \
 	../drivers/stm32g474/periph/drv_inputs.c \
@@ -63,14 +60,22 @@ LDFLAGS += --specs=nano.specs
 # libopencm3 library
 LIBNAME := opencm3_stm32g4
 LDLIBS  += -L$(LIBOPENCM3_DIR)/lib -l$(LIBNAME)
+LDLIBS  += -L$(GRBL_BUILD) -lgrbl
 LDLIBS  += -lm
 
-.PHONY: all clean libopencm3 flash
+.PHONY: all clean libopencm3 grbl flash
 
 all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).bin
 
 libopencm3:
 	$(MAKE) -C $(LIBOPENCM3_DIR) TARGETS='stm32/g4' PREFIX=$(TOOLCHAIN)-
+
+$(GRBL_BUILD)/CMakeCache.txt: $(TOP)/CMakeLists.txt $(GRBL_TOOLCHAIN)
+	cmake -S $(TOP) -B $(GRBL_BUILD) \
+		-DCMAKE_TOOLCHAIN_FILE=$(GRBL_TOOLCHAIN)
+
+grbl: $(GRBL_BUILD)/CMakeCache.txt
+	cmake --build $(GRBL_BUILD) --target grbl
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -81,7 +86,7 @@ $(call obj_for,$(1)): $(1) | $(BUILD)
 endef
 $(foreach src,$(SRCS),$(eval $(call compile_source,$(src))))
 
-$(BUILD)/$(TARGET).elf: libopencm3 $(OBJS)
+$(BUILD)/$(TARGET).elf: libopencm3 grbl $(OBJS)
 	$(CC) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 	$(SIZE) $@
 
@@ -90,7 +95,7 @@ $(BUILD)/$(TARGET).bin: $(BUILD)/$(TARGET).elf
 
 
 clean:
-	rm -rf $(BUILD)
+	rm -rf $(BUILD) $(GRBL_BUILD)
 
 flash: $(BUILD)/$(TARGET).elf
 	openocd -f interface/stlink.cfg -f target/stm32g4x.cfg \
