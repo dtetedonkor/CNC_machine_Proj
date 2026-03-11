@@ -130,7 +130,8 @@ int main(void)
     do_command = command_ready;
     if (do_command)
     {
-      strcpy(cmd_line, rx_line);
+      strncpy(cmd_line, rx_line, RX_LINE_SIZE - 1u);
+      cmd_line[RX_LINE_SIZE - 1u] = '\0';
       command_ready = 0;
     }
     do_empty_line = empty_line_ready;
