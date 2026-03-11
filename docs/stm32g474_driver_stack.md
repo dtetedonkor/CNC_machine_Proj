@@ -26,6 +26,7 @@ drivers/stm32g474/
   periph/drv_inputs.[ch]
   periph/drv_stepper_timer.[ch]
   hal/hal_impl.c
+  hal/axis_motion.[ch]
 ```
 
 ## HAL boundary contract
@@ -89,6 +90,10 @@ The initial implementation uses a fixed tick timer (`TIM6`) with `BOARD_STEP_TIC
 4. Pins are lowered on the next tick, guaranteeing pulse width equal to one tick period.
 
 This matches the recommended v1 strategy and keeps ISR work bounded.
+
+`driver/main.c` now overrides `core_step_tick_isr()` and routes step generation through
+`drivers/stm32g474/hal/axis_motion.[ch]`, so STEP output is timer-driven for TMC2209
+instead of using blocking delay loops in the driver main loop.
 
 ## Step generation evolution path
 

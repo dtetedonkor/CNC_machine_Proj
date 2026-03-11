@@ -22,7 +22,8 @@ SRCS := \
 	../drivers/stm32g474/periph/drv_stepper_timer.c \
 	../drivers/stm32g474/periph/drv_timebase.c \
 	../drivers/stm32g474/periph/drv_uart.c \
-	../drivers/stm32g474/hal/hal_impl.c
+	../drivers/stm32g474/hal/hal_impl.c \
+	../drivers/stm32g474/hal/axis_motion.c
 
 obj_for = $(BUILD)/$(subst /,_,$(basename $(1))).o
 OBJS := $(foreach src,$(SRCS),$(call obj_for,$(src)))

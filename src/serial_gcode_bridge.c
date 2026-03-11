@@ -131,6 +131,23 @@ void serial_gcode_bridge_init(serial_gcode_bridge_t *bridge) {
     bridge->step_pulse_delay_us = 50u;
 }
 
+void serial_gcode_bridge_set_motion_backend(serial_gcode_bridge_t *bridge,
+                                            bool (*backend)(void *ctx,
+                                                            float start_x,
+                                                            float start_y,
+                                                            float end_x,
+                                                            float end_y,
+                                                            const float *steps_per_mm,
+                                                            uint32_t step_pulse_delay_us),
+                                            void *backend_ctx) {
+    if (!bridge) {
+        return;
+    }
+
+    bridge->motion_backend = backend;
+    bridge->motion_backend_ctx = backend_ctx;
+}
+
 gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
                                                 const char *line,
                                                 char *response,
@@ -164,7 +181,21 @@ gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
     float end_x = 0.0f;
     float end_y = 0.0f;
     gcode_get_position(&bridge->gcode, &end_x, &end_y);
-    if (!drive_xy_motion(bridge, start_x, start_y, end_x, end_y)) {
+
+    bool motion_ok = false;
+    if (bridge->motion_backend != NULL) {
+        motion_ok = bridge->motion_backend(bridge->motion_backend_ctx,
+                                           start_x,
+                                           start_y,
+                                           end_x,
+                                           end_y,
+                                           bridge->steps_per_mm,
+                                           bridge->step_pulse_delay_us);
+    } else {
+        motion_ok = drive_xy_motion(bridge, start_x, start_y, end_x, end_y);
+    }
+
+    if (!motion_ok) {
         snprintf(response, response_len, "error: safety input active");
         return GCODE_ERR_INVALID_TARGET;
     }

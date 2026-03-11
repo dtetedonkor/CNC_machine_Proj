@@ -22,6 +22,7 @@ static const size_t TEST_POLL_ITERATIONS_LIMIT = 16u;
 static const size_t GCODE_RESPONSE_MAX_LEN = 80u;
 static const char DRIVER_READY_MSG[] = "CNC ready";
 static const char DRIVER_READY_LINE[] = "CNC ready\r\n";
+static uint32_t mock_motion_backend_calls = 0u;
 
 hal_status_t hal_init(void) { return HAL_OK; }
 void hal_start(void) {}
@@ -107,6 +108,25 @@ static void reset_mocks(void) {
     mock_tx_text[0] = '\0';
     memset(&mock_inputs, 0, sizeof(mock_inputs));
     mock_pulse_mask_calls = 0u;
+    mock_motion_backend_calls = 0u;
+}
+
+static bool mock_motion_backend(void *ctx,
+                                float start_x,
+                                float start_y,
+                                float end_x,
+                                float end_y,
+                                const float *steps_per_mm,
+                                uint32_t step_pulse_delay_us) {
+    (void)ctx;
+    (void)start_x;
+    (void)start_y;
+    (void)end_x;
+    (void)end_y;
+    (void)steps_per_mm;
+    (void)step_pulse_delay_us;
+    mock_motion_backend_calls++;
+    return true;
 }
 
 static void mock_uart_feed_text(const char *text) {
@@ -264,6 +284,20 @@ static void test_motion_aborts_on_limit_input(void) {
     assert(!mock_motor_enabled);
 }
 
+static void test_custom_motion_backend_is_used(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+    serial_gcode_bridge_set_motion_backend(&bridge, mock_motion_backend, NULL);
+
+    char response[64];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "G0 X1", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+    assert(mock_motion_backend_calls == 1u);
+    assert(mock_pulse_mask_calls == 0u);
+}
+
 int main(void) {
     printf("Running serial gcode bridge tests...\n");
     test_g0_motion_emits_ok_and_steps();
@@ -273,6 +307,7 @@ int main(void) {
     test_xy_motion_uses_atomic_pulse_mask();
     test_motion_aborts_on_estop_input();
     test_motion_aborts_on_limit_input();
+    test_custom_motion_backend_is_used();
     printf("All serial gcode bridge tests passed!\n");
     return 0;
 }
