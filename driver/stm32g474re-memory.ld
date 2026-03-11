@@ -1,6 +1,0 @@
-/* STM32G474RE: 512K Flash, 128K SRAM */
-MEMORY
-{
-  rom (rx)  : ORIGIN = 0x08000000, LENGTH = 512K
-  ram (rwx) : ORIGIN = 0x20000000, LENGTH = 128K
-}
