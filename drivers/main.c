@@ -48,6 +48,7 @@ UART_HandleTypeDef hlpuart1;
 /* USER CODE BEGIN PV */
 volatile uint8_t rx_byte;
 char rx_line[RX_LINE_SIZE];
+char cmd_line[RX_LINE_SIZE];
 volatile uint8_t rx_index = 0;
 volatile uint8_t command_ready = 0;
 volatile uint8_t line_overflow = 0;
@@ -62,7 +63,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_LPUART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-void shell_process_line(void);
+void shell_process_line(const char *line);
 void shell_send(const char *s);
 
 /* USER CODE END PFP */
@@ -104,7 +105,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   shell_send("\r\nSTM32 shell ready\r\n");
   shell_send("Type help or enter a G-code line\r\n> ");
-  if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
+  if (HAL_UART_Receive_IT(&hlpuart1, (uint8_t *)&rx_byte, 1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -127,7 +128,12 @@ int main(void)
     do_overflow = line_overflow;
     line_overflow = 0;
     do_command = command_ready;
-    command_ready = 0;
+    if (do_command)
+    {
+      strncpy(cmd_line, rx_line, RX_LINE_SIZE - 1u);
+      cmd_line[RX_LINE_SIZE - 1u] = '\0';
+      command_ready = 0;
+    }
     do_empty_line = empty_line_ready;
     empty_line_ready = 0;
     do_rx_restart_error = rx_restart_error;
@@ -137,7 +143,7 @@ int main(void)
     if (do_rx_restart_error)
     {
       shell_send("\r\nerror: uart rx restart failed\r\n");
-      if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
+      if (HAL_UART_Receive_IT(&hlpuart1, (uint8_t *)&rx_byte, 1) != HAL_OK)
       {
         __disable_irq();
         rx_restart_error = 1;
@@ -154,7 +160,7 @@ int main(void)
 
     if (do_command)
     {
-      shell_process_line();
+      shell_process_line(cmd_line);
       prompt_needed = 1;
     }
     else if (do_empty_line)
@@ -280,17 +286,17 @@ void shell_send(const char *s)
   HAL_UART_Transmit(&hlpuart1, (uint8_t *)s, strlen(s), SHELL_TX_TIMEOUT_MS);
 }
 
-void shell_process_line(void)
+void shell_process_line(const char *line)
 {
   shell_send("\r\n[RX] ");
-  shell_send(rx_line);
+  shell_send(line);
   shell_send("\r\n");
 
-  if (strcmp(rx_line, "$") == 0)
+  if (strcmp(line, "$") == 0)
   {
     shell_send("status: shell alive\r\nok\r\n");
   }
-  else if (strcmp(rx_line, "help") == 0)
+  else if (strcmp(line, "help") == 0)
   {
     shell_send("commands: help, $, gcode lines\r\nok\r\n");
   }
@@ -369,7 +375,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       }
     }
 
-    if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
+    if (HAL_UART_Receive_IT(&hlpuart1, (uint8_t *)&rx_byte, 1) != HAL_OK)
     {
       rx_restart_error = 1;
     }
