@@ -31,6 +31,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define RX_LINE_SIZE 128u
+#define SHELL_TX_TIMEOUT_MS 1000u
 
 /* USER CODE END PD */
 
@@ -44,10 +46,12 @@ UART_HandleTypeDef hlpuart1;
 
 /* USER CODE BEGIN PV */
 uint8_t rx_byte;
-char rx_line[128];
+char rx_line[RX_LINE_SIZE];
 volatile uint8_t rx_index = 0;
 volatile uint8_t command_ready = 0;
 volatile uint8_t line_overflow = 0;
+volatile uint8_t empty_line_ready = 0;
+volatile uint8_t rx_restart_error = 0;
 
 /* USER CODE END PV */
 
@@ -111,16 +115,53 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if (line_overflow)
+    uint8_t do_overflow;
+    uint8_t do_command;
+    uint8_t do_empty_line;
+    uint8_t do_rx_restart_error;
+    uint8_t prompt_needed = 0;
+
+    __disable_irq();
+    do_overflow = line_overflow;
+    line_overflow = 0;
+    do_command = command_ready;
+    command_ready = 0;
+    do_empty_line = empty_line_ready;
+    empty_line_ready = 0;
+    do_rx_restart_error = rx_restart_error;
+    rx_restart_error = 0;
+    __enable_irq();
+
+    if (do_rx_restart_error)
     {
-      line_overflow = 0;
-      shell_send("\r\nerror: line overflow\r\n> ");
+      shell_send("\r\nerror: uart rx restart failed\r\n");
+      if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
+      {
+        __disable_irq();
+        rx_restart_error = 1;
+        __enable_irq();
+      }
+      prompt_needed = 1;
     }
 
-    if (command_ready)
+    if (do_overflow)
     {
-      command_ready = 0;
+      shell_send("\r\nerror: line overflow\r\n");
+      prompt_needed = 1;
+    }
+
+    if (do_command)
+    {
       shell_process_line();
+      prompt_needed = 1;
+    }
+    else if (do_empty_line)
+    {
+      prompt_needed = 1;
+    }
+
+    if (prompt_needed)
+    {
       shell_send("> ");
     }
   }
@@ -234,7 +275,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void shell_send(const char *s)
 {
-  HAL_UART_Transmit(&hlpuart1, (uint8_t *)s, strlen(s), HAL_MAX_DELAY);
+  HAL_UART_Transmit(&hlpuart1, (uint8_t *)s, strlen(s), SHELL_TX_TIMEOUT_MS);
 }
 
 void shell_process_line(void)
@@ -273,10 +314,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
           command_ready = 1;
           rx_index = 0;
         }
+        else
+        {
+          empty_line_ready = 1;
+        }
       }
       else
       {
-        if (rx_index < sizeof(rx_line) - 1)
+        if (rx_index < RX_LINE_SIZE - 1u)
         {
           rx_line[rx_index++] = c;
         }
@@ -288,7 +333,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       }
     }
 
-    HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1);
+    if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
+    {
+      rx_restart_error = 1;
+    }
   }
 }
 
