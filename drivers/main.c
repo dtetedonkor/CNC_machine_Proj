@@ -52,6 +52,7 @@ volatile uint8_t command_ready = 0;
 volatile uint8_t line_overflow = 0;
 volatile uint8_t empty_line_ready = 0;
 volatile uint8_t rx_restart_error = 0;
+volatile uint8_t last_char_was_cr = 0;
 
 /* USER CODE END PV */
 
@@ -303,16 +304,45 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   if (huart->Instance == LPUART1)
   {
     char c = (char)rx_byte;
+    uint8_t is_newline = 0;
+
+    if (c == '\r')
+    {
+      is_newline = 1;
+      last_char_was_cr = 1;
+    }
+    else if (c == '\n')
+    {
+      if (last_char_was_cr)
+      {
+        last_char_was_cr = 0;
+        goto rearm_rx;
+      }
+      is_newline = 1;
+    }
+    else
+    {
+      last_char_was_cr = 0;
+    }
 
     if (!command_ready)
     {
-      if (c == '\r' || c == '\n')
+      if (is_newline)
       {
         if (rx_index > 0)
         {
-          rx_line[rx_index] = '\0';
-          command_ready = 1;
-          rx_index = 0;
+          if (rx_index < RX_LINE_SIZE)
+          {
+            rx_line[rx_index] = '\0';
+            command_ready = 1;
+            rx_index = 0;
+          }
+          else
+          {
+            rx_index = 0;
+            rx_line[0] = '\0';
+            line_overflow = 1;
+          }
         }
         else
         {
@@ -328,11 +358,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         else
         {
           rx_index = 0;
+          rx_line[0] = '\0';
           line_overflow = 1;
         }
       }
     }
 
+rearm_rx:
     if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
     {
       rx_restart_error = 1;
