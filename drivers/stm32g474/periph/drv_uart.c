@@ -24,8 +24,8 @@ static void rx_push(uint8_t ch) {
 }
 
 void usart1_isr(void) {
-    if ((usart_get_flag(BOARD_USART, USART_ISR_RXNE_RXFNE) != 0) &&
-        (usart_get_interrupt_source(BOARD_USART, USART_CR1_RXNEIE_RXFNEIE) != 0)) {
+    /* RXNE: Receive data register not empty */
+    if (usart_get_flag(BOARD_USART, USART_ISR_RXNE) != 0) {
         rx_push((uint8_t)usart_recv(BOARD_USART));
     }
 }

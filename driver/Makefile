@@ -1,8 +1,17 @@
-PREFIX   ?= arm-none-eabi
-CC       := $(PREFIX)-gcc
-OBJCOPY  := $(PREFIX)-objcopy
-SIZE     := $(PREFIX)-size
+# Toolchain "triplet" (no trailing dash)
+TOOLCHAIN ?= arm-none-eabi
 
+# Accept PREFIX from environment, but normalize it:
+# - if user passes PREFIX=arm-none-eabi- -> TOOLCHAIN becomes arm-none-eabi
+# - if user passes PREFIX=arm-none-eabi  -> TOOLCHAIN stays arm-none-eabi
+ifneq ($(origin PREFIX), undefined)
+TOOLCHAIN := $(patsubst %- ,%,$(PREFIX))
+TOOLCHAIN := $(patsubst %-,%,$(TOOLCHAIN))
+endif
+
+CC       := $(TOOLCHAIN)-gcc
+OBJCOPY  := $(TOOLCHAIN)-objcopy
+SIZE     := $(TOOLCHAIN)-size
 TOP            := ..
 LIBOPENCM3_DIR := $(TOP)/lib/libopencm3
 
@@ -48,6 +57,8 @@ LDFLAGS += -nostartfiles
 LDFLAGS += -Wl,--gc-sections
 LDFLAGS += $(CPUFLAGS)
 LDFLAGS += -Wl,-Map=$(BUILD)/$(TARGET).map
+LDFLAGS += --specs=nosys.specs
+LDFLAGS += --specs=nano.specs
 
 # libopencm3 library
 LIBNAME := opencm3_stm32g4
@@ -59,7 +70,7 @@ LDLIBS  += -lm
 all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).bin
 
 libopencm3:
-	$(MAKE) -C $(LIBOPENCM3_DIR) TARGETS='stm32/g4' PREFIX=$(PREFIX)
+	$(MAKE) -C $(LIBOPENCM3_DIR) TARGETS='stm32/g4' PREFIX=$(TOOLCHAIN)-
 
 $(BUILD):
 	mkdir -p $(BUILD)
