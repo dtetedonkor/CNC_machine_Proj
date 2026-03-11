@@ -146,6 +146,8 @@ static void driver_write_line(const char *msg) {
 typedef struct {
     serial_uart_t uart;
     serial_gcode_bridge_t bridge;
+    uint32_t last_ready_ms;
+    bool awaiting_host_input;
 } test_driver_context_t;
 
 static void driver_runtime_init(test_driver_context_t *ctx) {
@@ -155,6 +157,8 @@ static void driver_runtime_init(test_driver_context_t *ctx) {
     serial_uart_init(&ctx->uart);
     serial_gcode_bridge_init(&ctx->bridge);
     driver_write_line(DRIVER_READY_MSG);
+    ctx->last_ready_ms = hal_millis();
+    ctx->awaiting_host_input = true;
 }
 
 static void driver_runtime_poll_once(test_driver_context_t *ctx) {
@@ -162,7 +166,14 @@ static void driver_runtime_poll_once(test_driver_context_t *ctx) {
     uint8_t rx_buf[32];
     const size_t rx = hal_serial_read(HAL_PORT_GCODE, rx_buf, sizeof(rx_buf));
     if (rx > 0u) {
+        ctx->awaiting_host_input = false;
         serial_uart_rx_push(&ctx->uart, rx_buf, rx);
+    }
+
+    const uint32_t now_ms = hal_millis();
+    if (ctx->awaiting_host_input && ((now_ms - ctx->last_ready_ms) >= 1000u)) {
+        ctx->last_ready_ms = now_ms;
+        driver_write_line(DRIVER_READY_MSG);
     }
 
     char line[UART_LINE_MAX + 1];
@@ -242,6 +253,23 @@ static void test_driver_startup_and_mock_gcode_over_uart(void) {
     assert(mock_time_us > 0u);
 }
 
+static void test_driver_ready_prints_until_host_input(void) {
+    reset_mocks();
+
+    test_driver_context_t runtime;
+    driver_runtime_init(&runtime);
+
+    mock_time_us = 1000u * 1000u;
+    driver_runtime_poll_once(&runtime);
+    assert(strcmp(mock_tx_text, "CNC ready\r\nCNC ready\r\n") == 0);
+
+    mock_uart_feed_text("M17\n");
+    mock_time_us = 2000u * 1000u;
+    driver_runtime_poll_once(&runtime);
+    assert(strncmp(mock_tx_text, "CNC ready\r\nCNC ready\r\nOK\r\n", strlen("CNC ready\r\nCNC ready\r\nOK\r\n")) == 0);
+    assert(strstr(mock_tx_text, "CNC ready\r\nCNC ready\r\nCNC ready\r\n") == NULL);
+}
+
 static void test_xy_motion_uses_atomic_pulse_mask(void) {
     reset_mocks();
     serial_gcode_bridge_t bridge;
@@ -304,6 +332,7 @@ int main(void) {
     test_enable_disable_commands();
     test_invalid_line_returns_error();
     test_driver_startup_and_mock_gcode_over_uart();
+    test_driver_ready_prints_until_host_input();
     test_xy_motion_uses_atomic_pulse_mask();
     test_motion_aborts_on_estop_input();
     test_motion_aborts_on_limit_input();
