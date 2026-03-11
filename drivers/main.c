@@ -31,6 +31,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+/* 127 chars + NUL terminator for a simple UART shell line. */
+#define RX_LINE_SIZE 128u
+#define SHELL_TX_TIMEOUT_MS 1000u
 
 /* USER CODE END PD */
 
@@ -43,6 +46,14 @@
 UART_HandleTypeDef hlpuart1;
 
 /* USER CODE BEGIN PV */
+volatile uint8_t rx_byte;
+char rx_line[RX_LINE_SIZE];
+volatile uint8_t rx_index = 0;
+volatile uint8_t command_ready = 0;
+volatile uint8_t line_overflow = 0;
+volatile uint8_t empty_line_ready = 0;
+volatile uint8_t rx_restart_error = 0;
+volatile uint8_t last_char_was_cr = 0;
 
 /* USER CODE END PV */
 
@@ -51,6 +62,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_LPUART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+void shell_process_line(void);
+void shell_send(const char *s);
 
 /* USER CODE END PFP */
 
@@ -89,7 +102,12 @@ int main(void)
   MX_GPIO_Init();
   MX_LPUART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  char msg[] = "Hello World\r\n";
+  shell_send("\r\nSTM32 shell ready\r\n");
+  shell_send("Type help or enter a G-code line\r\n> ");
+  if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -99,8 +117,55 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_UART_Transmit(&hlpuart1, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
-	  HAL_Delay(1000);
+    uint8_t do_overflow;
+    uint8_t do_command;
+    uint8_t do_empty_line;
+    uint8_t do_rx_restart_error;
+    uint8_t prompt_needed = 0;
+
+    __disable_irq();
+    do_overflow = line_overflow;
+    line_overflow = 0;
+    do_command = command_ready;
+    command_ready = 0;
+    do_empty_line = empty_line_ready;
+    empty_line_ready = 0;
+    do_rx_restart_error = rx_restart_error;
+    rx_restart_error = 0;
+    __enable_irq();
+
+    if (do_rx_restart_error)
+    {
+      shell_send("\r\nerror: uart rx restart failed\r\n");
+      if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
+      {
+        __disable_irq();
+        rx_restart_error = 1;
+        __enable_irq();
+      }
+      prompt_needed = 1;
+    }
+
+    if (do_overflow)
+    {
+      shell_send("\r\nerror: line overflow\r\n");
+      prompt_needed = 1;
+    }
+
+    if (do_command)
+    {
+      shell_process_line();
+      prompt_needed = 1;
+    }
+    else if (do_empty_line)
+    {
+      prompt_needed = 1;
+    }
+
+    if (prompt_needed)
+    {
+      shell_send("> ");
+    }
   }
   /* USER CODE END 3 */
 }
@@ -210,6 +275,106 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void shell_send(const char *s)
+{
+  HAL_UART_Transmit(&hlpuart1, (uint8_t *)s, strlen(s), SHELL_TX_TIMEOUT_MS);
+}
+
+void shell_process_line(void)
+{
+  shell_send("\r\n[RX] ");
+  shell_send(rx_line);
+  shell_send("\r\n");
+
+  if (strcmp(rx_line, "$") == 0)
+  {
+    shell_send("status: shell alive\r\nok\r\n");
+  }
+  else if (strcmp(rx_line, "help") == 0)
+  {
+    shell_send("commands: help, $, gcode lines\r\nok\r\n");
+  }
+  else
+  {
+    shell_send("ok\r\n");
+  }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == LPUART1)
+  {
+    char c = (char)rx_byte;
+    uint8_t is_newline = 0;
+    uint8_t skip_char = 0;
+
+    if (c == '\r')
+    {
+      is_newline = 1;
+      last_char_was_cr = 1;
+    }
+    else if (c == '\n')
+    {
+      if (last_char_was_cr)
+      {
+        last_char_was_cr = 0;
+        skip_char = 1;
+      }
+      else
+      {
+        is_newline = 1;
+      }
+    }
+    else
+    {
+      last_char_was_cr = 0;
+    }
+
+    if (!skip_char && !command_ready)
+    {
+      if (is_newline)
+      {
+        if (rx_index > 0)
+        {
+          if (rx_index < RX_LINE_SIZE)
+          {
+            rx_line[rx_index] = '\0';
+            command_ready = 1;
+            rx_index = 0;
+          }
+          else
+          {
+            rx_index = 0;
+            rx_line[0] = '\0';
+            line_overflow = 1;
+          }
+        }
+        else
+        {
+          empty_line_ready = 1;
+        }
+      }
+      else
+      {
+        if (rx_index < RX_LINE_SIZE - 1u)
+        {
+          rx_line[rx_index++] = c;
+        }
+        else
+        {
+          rx_index = 0;
+          rx_line[0] = '\0';
+          line_overflow = 1;
+        }
+      }
+    }
+
+    if (HAL_UART_Receive_IT(&hlpuart1, &rx_byte, 1) != HAL_OK)
+    {
+      rx_restart_error = 1;
+    }
+  }
+}
 
 /* USER CODE END 4 */
 

@@ -1,6 +1,6 @@
 # STM32G474 Driver Stack Layout
 
-This target keeps the core CNC logic isolated from libopencm3 symbols by splitting STM32G474 code into board, peripheral, and HAL glue layers.
+This target keeps the core CNC logic isolated from MCU-vendor symbols by splitting STM32G474 code into board, peripheral, and HAL glue layers.
 
 > Note: STM32G4 family peripherals are similar across parts (for example STM32G491 and STM32G474), but always verify final alternate-function pin mapping and instance availability against the STM32G474 datasheet/reference manual.
 
@@ -33,7 +33,7 @@ drivers/stm32g474/
 
 `drivers/stm32g474/hal/hal_impl.c` implements `src/hal.h` and is the only place core code touches platform behavior.
 
-Core modules should continue to use only `src/hal.h` and never include libopencm3 headers directly.
+Core modules should continue to use only `src/hal.h` and never include STM32 HAL headers directly.
 
 ## Driver responsibilities (STM32G474)
 
