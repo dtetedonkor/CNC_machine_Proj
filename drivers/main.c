@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
+#include "../src/core.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,6 +56,7 @@ volatile uint8_t line_overflow = 0;
 volatile uint8_t empty_line_ready = 0;
 volatile uint8_t rx_restart_error = 0;
 volatile uint8_t last_char_was_cr = 0;
+core_t cnc_core;
 
 /* USER CODE END PV */
 
@@ -103,8 +105,9 @@ int main(void)
   MX_GPIO_Init();
   MX_LPUART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  core_init(&cnc_core);
   shell_send("\r\nSTM32 shell ready\r\n");
-  shell_send("Type help or enter a G-code line\r\n> ");
+  shell_send("Type help/$ or enter a G-code line\r\n> ");
   if (HAL_UART_Receive_IT(&hlpuart1, (uint8_t *)&rx_byte, 1) != HAL_OK)
   {
     Error_Handler();
@@ -118,6 +121,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    core_poll(&cnc_core);
+
     uint8_t do_overflow;
     uint8_t do_command;
     uint8_t do_empty_line;
@@ -322,21 +327,32 @@ void shell_send(const char *s)
 
 void shell_process_line(const char *line)
 {
-  shell_send("\r\n[RX] ");
-  shell_send(line);
-  shell_send("\r\n");
-
   if (strcmp(line, "$") == 0)
   {
-    shell_send("status: shell alive\r\nok\r\n");
+    char status[64];
+    if (core_get_status(&cnc_core, status, sizeof(status)) > 0u)
+    {
+      shell_send("\r\n");
+      shell_send(status);
+      shell_send("\r\n");
+    }
+    shell_send("ok\r\n");
   }
   else if (strcmp(line, "help") == 0)
   {
-    shell_send("commands: help, $, gcode lines\r\nok\r\n");
+    shell_send("\r\ncommands: help, $, gcode lines\r\nok\r\n");
   }
   else
   {
-    shell_send("ok\r\n");
+    char response[80];
+    const gcode_status_t st = core_submit_line(&cnc_core, line, response, sizeof(response));
+    shell_send("\r\n");
+    shell_send(response);
+    shell_send("\r\n");
+    if (st != GCODE_OK)
+    {
+      hal_stepper_enable(false);
+    }
   }
 }
 
