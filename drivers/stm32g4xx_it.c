@@ -55,6 +55,7 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern UART_HandleTypeDef hlpuart1;
 
 /* USER CODE BEGIN EV */
 
@@ -197,6 +198,11 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32g4xx.s).                    */
 /******************************************************************************/
+
+void LPUART1_IRQHandler(void)
+{
+  HAL_UART_IRQHandler(&hlpuart1);
+}
 
 /* USER CODE BEGIN 1 */
 
