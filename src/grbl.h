@@ -149,6 +149,7 @@
 #include "hal.h"
 #include "serial_uart.h"
 #include "protocol.h"
+#include "core.h"
 #include "system_state.h"
 #include "state_machine.h"
 #include "kinematics.h"

@@ -10,11 +10,13 @@ Firmware custom built cnc library using **STM32 HAL** for driver development.
 Firmware takes gcode and converts it into pwm motor controls
 
 ## Firmware Drivers (current modules)
+- `core` as the frozen firmware entry API (`core_init`, `core_submit_line`, `core_poll`, `core_get_status`, `core_estop`, `core_limits_update`)
 - `serial_uart` for UART RX/TX transport buffering and line framing
 - `protocol` for line validation and realtime command handling
 - `state_machine`/`system_state` for run/hold/alarm transitions
 - `io_limits_estop_hand` for debounced limits + latched E-stop safety
 - `hal` as the platform-specific GPIO/timer/serial boundary
+- `platform/stm32g474` for CubeMX STM32 HAL board bindings (`board_stm32g474.*`, `hal_stm32.*`)
 
 Driver setup and flashing details: `docs/driversetup.md`
 Step-by-step custom STM32G474VE build + flash workflow: `docs/build_and_flash_custom_stm32g474ve.md`

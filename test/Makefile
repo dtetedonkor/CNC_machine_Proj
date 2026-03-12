@@ -16,6 +16,7 @@ CLI_TEST_TARGET = $(BIN_DIR)/terminal_cli_test_runner
 PROTOCOL_TEST_TARGET = $(BIN_DIR)/protocol_test_runner
 UART_TEST_TARGET = $(BIN_DIR)/serial_uart_test_runner
 BRIDGE_TEST_TARGET = $(BIN_DIR)/serial_gcode_bridge_test_runner
+CORE_TEST_TARGET = $(BIN_DIR)/core_test_runner
 
 # Source / objects
 OBJS = $(BUILD_DIR)/parser.o $(BUILD_DIR)/input_test.o
@@ -26,9 +27,10 @@ CLI_OBJS = $(BUILD_DIR)/terminal_cli.o $(BUILD_DIR)/kin_corexy.o $(BUILD_DIR)/gc
 PROTOCOL_OBJS = $(BUILD_DIR)/protocol.o $(BUILD_DIR)/protocol_test.o
 UART_OBJS = $(BUILD_DIR)/serial_uart.o $(BUILD_DIR)/serial_uart_test.o
 BRIDGE_OBJS = $(BUILD_DIR)/serial_gcode_bridge.o $(BUILD_DIR)/serial_uart.o $(BUILD_DIR)/gcode.o $(BUILD_DIR)/arc.o $(BUILD_DIR)/kinematics.o $(BUILD_DIR)/serial_gcode_bridge_test.o
+CORE_OBJS = $(BUILD_DIR)/core.o $(BUILD_DIR)/protocol.o $(BUILD_DIR)/serial_gcode_bridge.o $(BUILD_DIR)/gcode.o $(BUILD_DIR)/arc.o $(BUILD_DIR)/kinematics.o $(BUILD_DIR)/core_test.o
 
 # Default target
-all: dirs $(TEST_TARGET) $(PLANNER_TEST_TARGET) $(GCODE_TEST_TARGET) $(STEPPER_TEST_TARGET) $(CLI_TEST_TARGET) $(PROTOCOL_TEST_TARGET) $(UART_TEST_TARGET) $(BRIDGE_TEST_TARGET)
+all: dirs $(TEST_TARGET) $(PLANNER_TEST_TARGET) $(GCODE_TEST_TARGET) $(STEPPER_TEST_TARGET) $(CLI_TEST_TARGET) $(PROTOCOL_TEST_TARGET) $(UART_TEST_TARGET) $(BRIDGE_TEST_TARGET) $(CORE_TEST_TARGET)
 
 # Link test runner  (THIS WAS MISSING)
 $(TEST_TARGET): $(OBJS)
@@ -66,6 +68,10 @@ $(UART_TEST_TARGET): $(UART_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^
 
 $(BRIDGE_TEST_TARGET): $(BRIDGE_OBJS)
+	@echo "Linking $@..."
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+$(CORE_TEST_TARGET): $(CORE_OBJS)
 	@echo "Linking $@..."
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
@@ -172,7 +178,17 @@ $(BUILD_DIR)/serial_gcode_bridge.o: $(SRC_DIR)/serial_gcode_bridge.c $(SRC_DIR)/
 	@echo "Compiling $< -> $@..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/core.o: $(SRC_DIR)/core.c $(SRC_DIR)/core.h
+	@mkdir -p $(BUILD_DIR)
+	@echo "Compiling $< -> $@..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(BUILD_DIR)/serial_gcode_bridge_test.o: $(TEST_DIR)/serial_gcode_bridge_test.c
+	@mkdir -p $(BUILD_DIR)
+	@echo "Compiling $< -> $@..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/core_test.o: $(TEST_DIR)/core_test.c
 	@mkdir -p $(BUILD_DIR)
 	@echo "Compiling $< -> $@..."
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -210,5 +226,8 @@ run: all
 	@echo ""
 	@echo "Running serial gcode bridge tests..."
 	./$(BRIDGE_TEST_TARGET)
+	@echo ""
+	@echo "Running core integration tests..."
+	./$(CORE_TEST_TARGET)
 
 .PHONY: all clean dirs run
