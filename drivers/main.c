@@ -345,14 +345,10 @@ void shell_process_line(const char *line)
   else
   {
     char response[80];
-    const gcode_status_t st = core_submit_line(&cnc_core, line, response, sizeof(response));
+    core_submit_line(&cnc_core, line, response, sizeof(response));
     shell_send("\r\n");
     shell_send(response);
     shell_send("\r\n");
-    if (st != GCODE_OK)
-    {
-      hal_stepper_enable(false);
-    }
   }
 }
 

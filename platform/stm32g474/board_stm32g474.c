@@ -2,10 +2,6 @@
 
 #include "main.h"
 
-#ifndef BOARD_STM32G474_STEP_PULSE_US
-#define BOARD_STM32G474_STEP_PULSE_US 2u
-#endif
-
 extern UART_HandleTypeDef hlpuart1;
 
 hal_status_t board_stm32g474_init(void) {
@@ -56,8 +52,6 @@ void board_stm32g474_stepper_set_dir(hal_axis_t axis, bool dir_positive) {
 
 void board_stm32g474_stepper_pulse_mask(uint32_t axis_mask) {
     (void)axis_mask;
-    for (volatile uint32_t i = 0; i < (BOARD_STM32G474_STEP_PULSE_US * 16u); ++i) {
-    }
 }
 
 void board_stm32g474_stepper_step_clear(hal_axis_t axis) {
