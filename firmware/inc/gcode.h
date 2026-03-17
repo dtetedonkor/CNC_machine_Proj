@@ -8,6 +8,7 @@
  *
  * Supported commands:
  *  Motion: G00 (rapid), G01 (linear), G02 (arc CW), G03 (arc CCW), G04 (dwell)
+ *  Units: G20 (inch), G21 (mm)
  *  Feed modes: G94 (units per minute)
  *  Spindle: M03 (on CW), M04 (on CCW), M05 (off)
  *  Program: M02 (program end), M30 (program end and rewind)
@@ -48,6 +49,11 @@ typedef enum {
 } gcode_feed_mode_t;
 
 typedef enum {
+    GCODE_UNITS_MM = 0,    /* G21 - millimeters */
+    GCODE_UNITS_INCH = 1,  /* G20 - inches */
+} gcode_units_mode_t;
+
+typedef enum {
     GCODE_SPINDLE_OFF = 0,
     GCODE_SPINDLE_CW = 1,         /* M03 - clockwise */
     GCODE_SPINDLE_CCW = 2,        /* M04 - counter-clockwise */
@@ -74,6 +80,7 @@ typedef struct {
     gcode_motion_mode_t motion_mode;
     gcode_coord_mode_t coord_mode;
     gcode_feed_mode_t feed_mode;
+    gcode_units_mode_t units_mode;
     gcode_spindle_state_t spindle_state;
     
     /* Feed and speed parameters */
