@@ -7,6 +7,8 @@ from typing import Callable, Optional, Sequence
 
 import serial
 
+SETUP_ERROR_INDEX = -1
+
 
 class StreamState(Enum):
     IDLE = auto()
@@ -77,7 +79,7 @@ class GrblStreamer(Thread):
                     try:
                         payload = (cmd + "\n").encode("ascii")
                     except UnicodeEncodeError as exc:
-                        self._emit_error(line_index, cmd, f"Encoding error: {exc}")
+                        self._emit_error(line_index, cmd, f"Encoding error for '{cmd}': {exc}")
                         return
                     ser.write(payload)
 
@@ -99,8 +101,11 @@ class GrblStreamer(Thread):
                     else:
                         self._emit_error(line_index, cmd, "Timeout waiting for OK")
                         return
+        except serial.SerialException as exc:
+            self._emit_error(SETUP_ERROR_INDEX, "", f"Serial connection failed: {exc}")
+            return
         except Exception as exc:
-            self._emit_error(-1, "", str(exc))
+            self._emit_error(SETUP_ERROR_INDEX, "", str(exc))
             return
 
         self._emit_state(StreamState.DONE)

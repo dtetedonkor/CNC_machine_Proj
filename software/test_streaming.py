@@ -97,7 +97,7 @@ class StreamingTests(unittest.TestCase):
             streamer = GrblStreamer(
                 port="COM11",
                 baudrate=115200,
-                lines=["G1 X1 Ω"],
+                lines=["G1 X1 Ā"],
                 state_callback=states.append,
                 error_callback=errors.append,
                 startup_drain_time=0.0,
@@ -106,7 +106,7 @@ class StreamingTests(unittest.TestCase):
 
         self.assertEqual(states, [StreamState.SENDING, StreamState.ERROR])
         self.assertEqual(len(errors), 1)
-        self.assertEqual(errors[0].line_text, "G1 X1 Ω")
+        self.assertEqual(errors[0].line_text, "G1 X1 Ā")
         self.assertIn("Encoding error", errors[0].raw_line)
 
 
