@@ -322,12 +322,15 @@ class MainWindow(QMainWindow):
             self.btn_save.setEnabled(bool(self._last_gcode))
 
     def _on_stream_error(self, err: StreamError) -> None:
-        msg = (
-            f"Streaming failed.\n\n"
-            f"Line {err.line_index + 1}:\n"
-            f"{err.line_text}\n\n"
-            f"Controller response: {err.raw_line}"
-        )
+        if err.line_index >= 0:
+            msg = (
+                f"Streaming failed.\n\n"
+                f"Line {err.line_index + 1}:\n"
+                f"{err.line_text}\n\n"
+                f"Controller response: {err.raw_line}"
+            )
+        else:
+            msg = f"Streaming failed.\n\n{err.raw_line}"
         self.console_append("Streaming failed.")
         QMessageBox.critical(self, "Streaming error", msg)
         self.btn_stream.setEnabled(True)
