@@ -74,7 +74,11 @@ class GrblStreamer(Thread):
                     if not cmd:
                         continue
 
-                    payload = (cmd + "\n").encode("ascii", errors="ignore")
+                    try:
+                        payload = (cmd + "\n").encode("ascii")
+                    except UnicodeEncodeError as exc:
+                        self._emit_error(line_index, cmd, f"Encoding error: {exc}")
+                        return
                     ser.write(payload)
 
                     deadline = time.time() + self.timeout_per_line
@@ -100,7 +104,6 @@ class GrblStreamer(Thread):
             return
 
         self._emit_state(StreamState.DONE)
-        self._emit_state(StreamState.IDLE)
 
 
 def is_comment_or_empty(line: str) -> bool:

@@ -43,7 +43,7 @@ class StreamingTests(unittest.TestCase):
             streamer.run()
 
         self.assertEqual(fake.writes, [b"G21\n", b"G90\n"])
-        self.assertEqual(states, [StreamState.SENDING, StreamState.DONE, StreamState.IDLE])
+        self.assertEqual(states, [StreamState.SENDING, StreamState.DONE])
 
     def test_streamer_reports_controller_error(self):
         states = []
@@ -65,6 +65,49 @@ class StreamingTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertEqual(errors[0].line_text, "G1 X1")
         self.assertEqual(errors[0].raw_line, "error:2")
+
+    def test_streamer_reports_timeout(self):
+        states = []
+        errors = []
+        fake = _FakeSerial([])
+
+        with patch("streaming.serial.Serial", return_value=fake):
+            streamer = GrblStreamer(
+                port="COM11",
+                baudrate=115200,
+                lines=["G1 X1"],
+                state_callback=states.append,
+                error_callback=errors.append,
+                startup_drain_time=0.0,
+                timeout_per_line=0.01,
+            )
+            streamer.run()
+
+        self.assertEqual(states, [StreamState.SENDING, StreamState.ERROR])
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].line_text, "G1 X1")
+        self.assertIn("Timeout waiting for OK", errors[0].raw_line)
+
+    def test_streamer_reports_encoding_error(self):
+        states = []
+        errors = []
+        fake = _FakeSerial([])
+
+        with patch("streaming.serial.Serial", return_value=fake):
+            streamer = GrblStreamer(
+                port="COM11",
+                baudrate=115200,
+                lines=["G1 X1 Ω"],
+                state_callback=states.append,
+                error_callback=errors.append,
+                startup_drain_time=0.0,
+            )
+            streamer.run()
+
+        self.assertEqual(states, [StreamState.SENDING, StreamState.ERROR])
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].line_text, "G1 X1 Ω")
+        self.assertIn("Encoding error", errors[0].raw_line)
 
 
 if __name__ == "__main__":
