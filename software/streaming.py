@@ -32,6 +32,7 @@ class GrblStreamer(Thread):
         error_callback: Optional[Callable[[StreamError], None]] = None,
         timeout_per_line: float = 5.0,
         startup_drain_time: float = 1.0,
+        read_timeout: float = 0.1,
     ) -> None:
         super().__init__(daemon=True)
         self.port = port
@@ -41,6 +42,7 @@ class GrblStreamer(Thread):
         self.error_callback = error_callback
         self.timeout_per_line = timeout_per_line
         self.startup_drain_time = startup_drain_time
+        self.read_timeout = read_timeout
 
     def _emit_state(self, state: StreamState) -> None:
         if self.state_callback:
@@ -60,7 +62,7 @@ class GrblStreamer(Thread):
     def run(self) -> None:
         self._emit_state(StreamState.SENDING)
         try:
-            with serial.Serial(self.port, self.baudrate, timeout=0.1) as ser:
+            with serial.Serial(self.port, self.baudrate, timeout=self.read_timeout) as ser:
                 time.sleep(self.startup_drain_time)
                 ser.reset_input_buffer()
 
@@ -84,9 +86,10 @@ class GrblStreamer(Thread):
                         if not text:
                             continue
 
-                        if text.upper() == "OK":
+                        normalized = text.upper()
+                        if normalized == "OK":
                             break
-                        if text.lower().startswith("error"):
+                        if normalized.startswith("ERROR"):
                             self._emit_error(line_index, cmd, text)
                             return
                     else:
