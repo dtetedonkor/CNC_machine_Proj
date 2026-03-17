@@ -1,6 +1,104 @@
 import argparse
 import time
+from dataclasses import dataclass
+from enum import Enum, auto
+from threading import Thread
+from typing import Callable, Optional, Sequence
+
 import serial
+
+
+class StreamState(Enum):
+    IDLE = auto()
+    SENDING = auto()
+    DONE = auto()
+    ERROR = auto()
+
+
+@dataclass
+class StreamError:
+    line_index: int
+    line_text: str
+    raw_line: str
+
+
+class GrblStreamer(Thread):
+    def __init__(
+        self,
+        port: str,
+        baudrate: int,
+        lines: Sequence[str],
+        state_callback: Optional[Callable[[StreamState], None]] = None,
+        error_callback: Optional[Callable[[StreamError], None]] = None,
+        timeout_per_line: float = 5.0,
+        startup_drain_time: float = 1.0,
+    ) -> None:
+        super().__init__(daemon=True)
+        self.port = port
+        self.baudrate = baudrate
+        self.lines = lines
+        self.state_callback = state_callback
+        self.error_callback = error_callback
+        self.timeout_per_line = timeout_per_line
+        self.startup_drain_time = startup_drain_time
+
+    def _emit_state(self, state: StreamState) -> None:
+        if self.state_callback:
+            self.state_callback(state)
+
+    def _emit_error(self, line_index: int, line_text: str, raw_line: str) -> None:
+        self._emit_state(StreamState.ERROR)
+        if self.error_callback:
+            self.error_callback(
+                StreamError(
+                    line_index=line_index,
+                    line_text=line_text,
+                    raw_line=raw_line,
+                )
+            )
+
+    def run(self) -> None:
+        self._emit_state(StreamState.SENDING)
+        try:
+            with serial.Serial(self.port, self.baudrate, timeout=0.1) as ser:
+                time.sleep(self.startup_drain_time)
+                ser.reset_input_buffer()
+
+                for line_index, raw in enumerate(self.lines):
+                    if is_comment_or_empty(raw):
+                        continue
+
+                    cmd = strip_inline_comments(raw)
+                    if not cmd:
+                        continue
+
+                    payload = (cmd + "\n").encode("ascii", errors="ignore")
+                    ser.write(payload)
+
+                    deadline = time.time() + self.timeout_per_line
+                    while time.time() < deadline:
+                        resp = ser.readline()
+                        if not resp:
+                            continue
+                        text = resp.decode("utf-8", errors="replace").strip()
+                        if not text:
+                            continue
+
+                        if text.upper() == "OK":
+                            break
+                        if text.lower().startswith("error"):
+                            self._emit_error(line_index, cmd, text)
+                            return
+                    else:
+                        self._emit_error(line_index, cmd, "Timeout waiting for OK")
+                        return
+        except Exception as exc:
+            self._emit_error(-1, "", str(exc))
+            return
+
+        self._emit_state(StreamState.DONE)
+        self._emit_state(StreamState.IDLE)
+
 
 def is_comment_or_empty(line: str) -> bool:
     s = line.strip()
