@@ -1,114 +1,98 @@
-import unittest
-from unittest.mock import patch
+from __future__ import annotations
 
-from streaming import GrblStreamer, StreamState
+from pathlib import Path
+import sys
+import time
 
-
-class _FakeSerial:
-    def __init__(self, responses):
-        self._responses = list(responses)
-        self.writes = []
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-    def reset_input_buffer(self):
-        return None
-
-    def write(self, payload):
-        self.writes.append(payload)
-
-    def readline(self):
-        if self._responses:
-            return self._responses.pop(0)
-        return b""
+from streaming import GrblStreamer, StreamError, StreamState
 
 
-class StreamingTests(unittest.TestCase):
-    def test_streamer_sends_lines_and_finishes(self):
-        states = []
-        fake = _FakeSerial([b"ok\n", b"ok\n"])
+# ------------------ CONFIG: CHANGE THESE ------------------
+GCODE_FILE = "dog.gcode"   # can be "dog.gcode" (if you run from software/), or an absolute path
+PORT = "COM12"             # e.g. "COM11" on Windows, "/dev/ttyACM0" on Linux
+BAUDRATE = 115200
+# Optional GRBL/grblHAL preamble:
+PREAMBLE = ["$X", "G21", "G90"]
+STARTUP_DRAIN_TIME = 2.0
+TIMEOUT_PER_LINE = 5.0
+# ----------------------------------------------------------
 
-        with patch("streaming.serial.Serial", return_value=fake):
-            streamer = GrblStreamer(
-                port="COM11",
-                baudrate=115200,
-                lines=[";comment", "G21", "G90"],
-                state_callback=states.append,
-                startup_drain_time=0.0,
+
+def main() -> int:
+    gcode_path = Path(GCODE_FILE)
+
+    # If user runs this script from a different working directory,
+    # try to resolve relative path relative to *this file's* folder.
+    if not gcode_path.is_absolute():
+        here = Path(__file__).resolve().parent
+        candidate = here / gcode_path
+        if candidate.exists():
+            gcode_path = candidate
+
+    if not gcode_path.exists():
+        print(f"ERROR: G-code file not found: {gcode_path}", file=sys.stderr)
+        return 2
+
+    if gcode_path.suffix.lower() != ".gcode":
+        print(f"ERROR: Not a .gcode file: {gcode_path}", file=sys.stderr)
+        return 2
+
+    try:
+        with open(gcode_path, "r", encoding="utf-8", errors="replace") as fh:
+            file_lines = [ln.rstrip("\n") for ln in fh]
+    except Exception as e:
+        print(f"ERROR: Could not read {gcode_path}: {e}", file=sys.stderr)
+        return 2
+
+    lines = list(PREAMBLE) + file_lines
+
+    print("----- Standalone GRBL Streaming Test -----")
+    print(f"File: {gcode_path}")
+    print(f"Port: {PORT}")
+    print(f"Baud: {BAUDRATE}")
+    print(f"Preamble: {PREAMBLE}")
+    print("------------------------------------------")
+
+    # Callbacks
+    def on_state(state: StreamState) -> None:
+        print(f"[STATE] {state.name}")
+
+    def on_error(err: StreamError) -> None:
+        if err.line_index >= 0:
+            print(
+                "\n[ERROR]\n"
+                f"Line {err.line_index + 1}: {err.line_text}\n"
+                f"Controller: {err.raw_line}\n",
+                file=sys.stderr,
             )
-            streamer.run()
+        else:
+            print(f"\n[ERROR]\n{err.raw_line}\n", file=sys.stderr)
 
-        self.assertEqual(fake.writes, [b"G21\n", b"G90\n"])
-        self.assertEqual(states, [StreamState.SENDING, StreamState.DONE])
+    def on_log(text: str) -> None:
+        # text is already formatted like ">> ..." or "<< ..."
+        print(text)
 
-    def test_streamer_reports_controller_error(self):
-        states = []
-        errors = []
-        fake = _FakeSerial([b"error:2\n"])
+    streamer = GrblStreamer(
+        port=PORT,
+        baudrate=BAUDRATE,
+        lines=lines,
+        state_callback=on_state,
+        error_callback=on_error,
+        log_callback=on_log,
+        startup_drain_time=STARTUP_DRAIN_TIME,
+        timeout_per_line=TIMEOUT_PER_LINE,
+    )
 
-        with patch("streaming.serial.Serial", return_value=fake):
-            streamer = GrblStreamer(
-                port="COM11",
-                baudrate=115200,
-                lines=["G1 X1"],
-                state_callback=states.append,
-                error_callback=errors.append,
-                startup_drain_time=0.0,
-            )
-            streamer.run()
+    # You can either call streamer.run() (blocking) or streamer.start() (thread).
+    # For a simple standalone script, blocking is easiest:
+    streamer.run()
 
-        self.assertEqual(states, [StreamState.SENDING, StreamState.ERROR])
-        self.assertEqual(len(errors), 1)
-        self.assertEqual(errors[0].line_text, "G1 X1")
-        self.assertEqual(errors[0].raw_line, "error:2")
+    # Give stdout a moment to flush in some terminals
+    time.sleep(0.05)
 
-    def test_streamer_reports_timeout(self):
-        states = []
-        errors = []
-        fake = _FakeSerial([])
-
-        with patch("streaming.serial.Serial", return_value=fake):
-            streamer = GrblStreamer(
-                port="COM11",
-                baudrate=115200,
-                lines=["G1 X1"],
-                state_callback=states.append,
-                error_callback=errors.append,
-                startup_drain_time=0.0,
-                timeout_per_line=0.01,
-            )
-            streamer.run()
-
-        self.assertEqual(states, [StreamState.SENDING, StreamState.ERROR])
-        self.assertEqual(len(errors), 1)
-        self.assertEqual(errors[0].line_text, "G1 X1")
-        self.assertIn("Timeout waiting for OK", errors[0].raw_line)
-
-    def test_streamer_reports_encoding_error(self):
-        states = []
-        errors = []
-        fake = _FakeSerial([])
-
-        with patch("streaming.serial.Serial", return_value=fake):
-            streamer = GrblStreamer(
-                port="COM11",
-                baudrate=115200,
-                lines=["G1 X1 Ā"],
-                state_callback=states.append,
-                error_callback=errors.append,
-                startup_drain_time=0.0,
-            )
-            streamer.run()
-
-        self.assertEqual(states, [StreamState.SENDING, StreamState.ERROR])
-        self.assertEqual(len(errors), 1)
-        self.assertEqual(errors[0].line_text, "G1 X1 Ā")
-        self.assertIn("Encoding error", errors[0].raw_line)
+    print("Done.")
+    return 0
 
 
 if __name__ == "__main__":
-    unittest.main()
+    raise SystemExit(main())

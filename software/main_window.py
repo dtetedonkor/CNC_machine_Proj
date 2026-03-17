@@ -237,16 +237,43 @@ class MainWindow(QMainWindow):
     # ---------------- Streaming integration ----------------
     def start_streaming(self) -> None:
         """
-        Start streaming the generated G-code to a grblHAL-compatible controller.
-        Uses a preamble + last generated G-code and only reacts to job-level events.
+        Start streaming G-code to a grblHAL-compatible controller.
+
+        UPDATED BEHAVIOR:
+        - Streaming REQUIRES choosing a .gcode file via popup.
+        - UART/controller responses (and sent commands) are shown live in the Console.
         """
-        if not self._last_gcode:
-            QMessageBox.information(self, "No G-code", "Generate G-code before starting streaming.")
+        # Require user to choose a .gcode file
+        gcode_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select G-code file to stream",
+            "",
+            "G-code Files (*.gcode);;All Files (*)",
+        )
+        if not gcode_path:
             return
 
-        # Preamble + job G-code
+        path = Path(gcode_path)
+        if path.suffix.lower() != ".gcode":
+            QMessageBox.warning(self, "Invalid file", "Please select a .gcode file.")
+            return
+        if not path.exists():
+            QMessageBox.critical(self, "File missing", f"File not found:\n{gcode_path}")
+            return
+
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                file_lines = [ln.rstrip("\n") for ln in fh]
+        except Exception as e:
+            QMessageBox.critical(self, "Read error", f"Could not read file:\n{e}")
+            return
+
+        # Preamble + file G-code
         preamble = ["$X", "G21", "G90"]
-        lines = preamble + self._last_gcode
+        lines = preamble + file_lines
+
+        self.console_append(f"Selected G-code file for streaming: {path}")
+        self.console_append("Preamble: " + ", ".join(preamble))
 
         # Port (default COM11)
         port, ok = QInputDialog.getText(
@@ -280,7 +307,6 @@ class MainWindow(QMainWindow):
         self.btn_save.setEnabled(False)
         self.status_label.setText(f"Connecting to {port}...")
         self.console_append(f"Starting streaming on {port} @ {baudrate}...")
-        self.console_append("Preamble: " + ", ".join(preamble))
 
         # Thread-safe wrappers
         def state_cb(state: StreamState) -> None:
@@ -289,12 +315,16 @@ class MainWindow(QMainWindow):
         def error_cb(err: StreamError) -> None:
             QTimer.singleShot(0, lambda: self._on_stream_error(err))
 
+        def log_cb(text: str) -> None:
+            QTimer.singleShot(0, lambda: self.console_append(text))
+
         self._streamer = GrblStreamer(
             port=port,
             baudrate=baudrate,
             lines=lines,
             state_callback=state_cb,
             error_callback=error_cb,
+            log_callback=log_cb,
             startup_drain_time=2.0,
         )
         self._streamer.start()

@@ -32,6 +32,7 @@ class GrblStreamer(Thread):
         lines: Sequence[str],
         state_callback: Optional[Callable[[StreamState], None]] = None,
         error_callback: Optional[Callable[[StreamError], None]] = None,
+        log_callback: Optional[Callable[[str], None]] = None,
         timeout_per_line: float = 5.0,
         startup_drain_time: float = 1.0,
         read_timeout: float = 0.1,
@@ -42,6 +43,7 @@ class GrblStreamer(Thread):
         self.lines = lines
         self.state_callback = state_callback
         self.error_callback = error_callback
+        self.log_callback = log_callback
         self.timeout_per_line = timeout_per_line
         self.startup_drain_time = startup_drain_time
         self.read_timeout = read_timeout
@@ -49,6 +51,10 @@ class GrblStreamer(Thread):
     def _emit_state(self, state: StreamState) -> None:
         if self.state_callback:
             self.state_callback(state)
+
+    def _emit_log(self, text: str) -> None:
+        if self.log_callback:
+            self.log_callback(text)
 
     def _emit_error(self, line_index: int, line_text: str, raw_line: str) -> None:
         self._emit_state(StreamState.ERROR)
@@ -81,6 +87,9 @@ class GrblStreamer(Thread):
                     except UnicodeEncodeError as exc:
                         self._emit_error(line_index, cmd, f"Encoding error for '{cmd}': {exc}")
                         return
+
+                    # Log what we are sending
+                    self._emit_log(f">> {cmd}")
                     ser.write(payload)
 
                     deadline = time.time() + self.timeout_per_line
@@ -88,9 +97,13 @@ class GrblStreamer(Thread):
                         resp = ser.readline()
                         if not resp:
                             continue
+
                         text = resp.decode("utf-8", errors="replace").strip()
                         if not text:
                             continue
+
+                        # Log every controller line we receive
+                        self._emit_log(f"<< {text}")
 
                         normalized = text.upper()
                         if normalized == "OK":
@@ -101,6 +114,7 @@ class GrblStreamer(Thread):
                     else:
                         self._emit_error(line_index, cmd, "Timeout waiting for OK")
                         return
+
         except serial.SerialException as exc:
             self._emit_error(SETUP_ERROR_INDEX, "", f"Serial connection failed: {exc}")
             return
@@ -121,6 +135,7 @@ def is_comment_or_empty(line: str) -> bool:
         return True
     return False
 
+
 def strip_inline_comments(line: str) -> str:
     # Remove ';' comments
     if ";" in line:
@@ -138,6 +153,7 @@ def strip_inline_comments(line: str) -> str:
         if not in_paren:
             out.append(ch)
     return "".join(out).strip()
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -191,6 +207,7 @@ def main():
                 print(f">> {cmd}")
 
     print("Done.")
+
 
 if __name__ == "__main__":
     main()
