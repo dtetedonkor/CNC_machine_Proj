@@ -27,6 +27,7 @@ void gcode_init(gcode_state_t *gc) {
     gc->motion_mode = GCODE_MOTION_LINEAR;
     gc->coord_mode = GCODE_COORD_ABSOLUTE;
     gc->feed_mode = GCODE_FEED_UNITS_PER_MIN;
+    gc->units_mode = GCODE_UNITS_MM;
     gc->spindle_state = GCODE_SPINDLE_OFF;
     
     gc->absolute_mode = true;
@@ -44,6 +45,13 @@ void gcode_reset(gcode_state_t *gc) {
 }
 
 /* ----------------------------- Parsing helpers ----------------------------- */
+
+static float units_to_mm(const gcode_state_t *gc, float value) {
+    if (gc->units_mode == GCODE_UNITS_INCH) {
+        return value * 25.4f;
+    }
+    return value;
+}
 
 /* Skip whitespace */
 static const char *skip_ws(const char *s) {
@@ -179,20 +187,21 @@ static gcode_status_t execute_motion(gcode_state_t *gc, const gcode_block_t *blo
     
     /* Update feedrate if F word is present */
     if (block->has_f) {
-        if (block->f <= 0.0f) return GCODE_ERR_INVALID_PARAM;
-        gc->feedrate = block->f;
+        const float feed_mm_min = units_to_mm(gc, block->f);
+        if (feed_mm_min <= 0.0f) return GCODE_ERR_INVALID_PARAM;
+        gc->feedrate = feed_mm_min;
         gc->feedrate_set = true;
     }
     
     /* Calculate target position */
     if (gc->absolute_mode) {
         /* Absolute mode: X/Y specify absolute coordinates */
-        if (block->has_x) target_x = block->x;
-        if (block->has_y) target_y = block->y;
+        if (block->has_x) target_x = units_to_mm(gc, block->x);
+        if (block->has_y) target_y = units_to_mm(gc, block->y);
     } else {
         /* Relative mode: X/Y specify offsets */
-        if (block->has_x) target_x += block->x;
-        if (block->has_y) target_y += block->y;
+        if (block->has_x) target_x += units_to_mm(gc, block->x);
+        if (block->has_y) target_y += units_to_mm(gc, block->y);
     }
     
     /* Validate that feedrate was set for non-rapid moves */
@@ -271,8 +280,9 @@ static gcode_status_t execute_arc(gcode_state_t *gc, const gcode_block_t *block,
                                   bool clockwise) {
     /* Update feedrate if F word is present */
     if (block->has_f) {
-        if (block->f <= 0.0f) return GCODE_ERR_INVALID_PARAM;
-        gc->feedrate = block->f;
+        const float feed_mm_min = units_to_mm(gc, block->f);
+        if (feed_mm_min <= 0.0f) return GCODE_ERR_INVALID_PARAM;
+        gc->feedrate = feed_mm_min;
         gc->feedrate_set = true;
     }
     
@@ -284,11 +294,11 @@ static gcode_status_t execute_arc(gcode_state_t *gc, const gcode_block_t *block,
     float target_y = gc->position_y;
     
     if (gc->absolute_mode) {
-        if (block->has_x) target_x = block->x;
-        if (block->has_y) target_y = block->y;
+        if (block->has_x) target_x = units_to_mm(gc, block->x);
+        if (block->has_y) target_y = units_to_mm(gc, block->y);
     } else {
-        if (block->has_x) target_x += block->x;
-        if (block->has_y) target_y += block->y;
+        if (block->has_x) target_x += units_to_mm(gc, block->x);
+        if (block->has_y) target_y += units_to_mm(gc, block->y);
     }
     
     /* Set up callback context */
@@ -299,12 +309,12 @@ static gcode_status_t execute_arc(gcode_state_t *gc, const gcode_block_t *block,
         /* R-form arc */
         ok = arc_generate_r(gc->position_x, gc->position_y,
                             target_x, target_y,
-                            block->r, clockwise,
+                            units_to_mm(gc, block->r), clockwise,
                             arc_segment_handler, &ctx);
     } else if (block->has_i || block->has_j) {
         /* I/J center-offset form */
-        float i_off = block->has_i ? block->i : 0.0f;
-        float j_off = block->has_j ? block->j : 0.0f;
+        float i_off = block->has_i ? units_to_mm(gc, block->i) : 0.0f;
+        float j_off = block->has_j ? units_to_mm(gc, block->j) : 0.0f;
         
         ok = arc_generate_ij(gc->position_x, gc->position_y,
                              target_x, target_y,
@@ -399,6 +409,14 @@ gcode_status_t gcode_execute_block(gcode_state_t *gc, const gcode_block_t *block
                 
             case 4:  /* G04 - dwell */
                 status = execute_dwell(gc, block);
+                break;
+
+            case 20: /* G20 - inch units */
+                gc->units_mode = GCODE_UNITS_INCH;
+                break;
+
+            case 21: /* G21 - millimeter units */
+                gc->units_mode = GCODE_UNITS_MM;
                 break;
                 
             case 90: /* G90 - absolute positioning */

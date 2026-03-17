@@ -173,6 +173,31 @@ void test_feedrate_modes() {
     printf("  [PASSED]\n");
 }
 
+void test_unit_modes() {
+    printf("Testing unit mode commands...\n");
+
+    gcode_state_t gc;
+    gcode_init(&gc);
+
+    /* G21 should be accepted and keep millimeter mode. */
+    gcode_status_t status = gcode_process_line(&gc, "G21");
+    assert(status == GCODE_OK);
+    assert(gc.units_mode == GCODE_UNITS_MM);
+
+    /* G20 should switch to inch mode and scale motion/feed internally to mm. */
+    status = gcode_process_line(&gc, "G20");
+    assert(status == GCODE_OK);
+    assert(gc.units_mode == GCODE_UNITS_INCH);
+
+    status = gcode_process_line(&gc, "G01 X1.0 Y0.5 F10");
+    assert(status == GCODE_OK);
+    assert(float_equal(gc.position_x, 25.4f));
+    assert(float_equal(gc.position_y, 12.7f));
+    assert(float_equal(gc.feedrate, 254.0f));
+
+    printf("  [PASSED]\n");
+}
+
 void test_dwell_command() {
     printf("Testing dwell (G04) command...\n");
     
@@ -496,6 +521,7 @@ int main() {
     test_spindle_control();
     test_absolute_relative_modes();
     test_feedrate_modes();
+    test_unit_modes();
     test_dwell_command();
     test_query_functions();
     test_error_handling();
