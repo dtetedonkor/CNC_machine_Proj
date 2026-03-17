@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cnc_hal.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "gcode.h"
-#include "hal.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -146,7 +146,7 @@
 /* ----------------------------- Core includes ----------------------------- */
 /* These are your project headers from earlier steps. Adjust paths as needed. */
 
-#include "hal.h"
+#include "cnc_hal.h"
 #include "serial_uart.h"
 #include "protocol.h"
 #include "system_state.h"
