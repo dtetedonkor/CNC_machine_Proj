@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body
+  * @brief          : Main program body (STM32G4 / LPUART1)
   ******************************************************************************
   * @attention
   *
@@ -22,27 +22,24 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
+#include <stdio.h>
 #include "firmware_gcode_streamer.h"
-fw_gcode_streamer_t g_streamer;
 
+fw_gcode_streamer_t g_streamer;
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-/* 127 chars + NUL terminator for a simple UART shell line. */
 #define RX_LINE_SIZE 128u
 #define SHELL_TX_TIMEOUT_MS 1000u
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -58,7 +55,6 @@ volatile uint8_t line_overflow = 0;
 volatile uint8_t empty_line_ready = 0;
 volatile uint8_t rx_restart_error = 0;
 volatile uint8_t last_char_was_cr = 0;
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,13 +65,147 @@ static void MX_LPUART1_UART_Init(void);
 void shell_process_line(const char *line);
 void shell_send(const char *s);
 
+static void boot_print_banner_and_checks(void);
+static uint8_t boot_check_irq_ok(char *err, size_t err_sz);
+static uint8_t boot_check_usart_ok(char *err, size_t err_sz);
+static uint8_t boot_check_rxit_priming_ok(char *err, size_t err_sz);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 void App_Init(void)
 {
-    fw_gcode_streamer_init(&g_streamer);
+  fw_gcode_streamer_init(&g_streamer);
+}
+
+void shell_send(const char *s)
+{
+  HAL_UART_Transmit(&hlpuart1, (uint8_t *)s, (uint16_t)strlen(s), SHELL_TX_TIMEOUT_MS);
+}
+
+static void shell_send_line(const char *s)
+{
+  shell_send(s);
+  shell_send("\r\n");
+}
+
+/* 1) IRQ/NVIC check */
+static uint8_t boot_check_irq_ok(char *err, size_t err_sz)
+{
+  if (err_sz > 0) err[0] = '\0';
+
+  if (NVIC_GetEnableIRQ(LPUART1_IRQn) == 0U)
+  {
+    snprintf(err, err_sz, "IRQ NOT OK: LPUART1_IRQn not enabled");
+    return 0;
+  }
+
+  /* Priority check is optional; just report it (not a fail). */
+  return 1;
+}
+
+/* 2) USART peripheral config/clock checks */
+static uint8_t boot_check_usart_ok(char *err, size_t err_sz)
+{
+  if (err_sz > 0) err[0] = '\0';
+
+  if (hlpuart1.Instance != LPUART1)
+  {
+    snprintf(err, err_sz, "USART NOT OK: hlpuart1.Instance != LPUART1");
+    return 0;
+  }
+
+  if (__HAL_RCC_LPUART1_IS_CLK_DISABLED())
+  {
+    snprintf(err, err_sz, "USART NOT OK: LPUART1 clock disabled");
+    return 0;
+  }
+
+  /* On STM32G4, LPUART1 TX/RX are on GPIOA on many configs; GPIOA clock is needed.
+   * If you use a different port, adjust this check accordingly.
+   */
+  if (__HAL_RCC_GPIOA_IS_CLK_DISABLED())
+  {
+    snprintf(err, err_sz, "GPIO NOT OK: GPIOA clock disabled");
+    return 0;
+  }
+
+  /* Check that HAL considers the peripheral initialized */
+  if (hlpuart1.gState == HAL_UART_STATE_RESET)
+  {
+    snprintf(err, err_sz, "USART NOT OK: HAL UART state RESET");
+    return 0;
+  }
+
+  /* Optional: check USART enabled at peripheral level */
+  if ((READ_BIT(hlpuart1.Instance->CR1, USART_CR1_UE) == 0U))
+  {
+    snprintf(err, err_sz, "USART NOT OK: UE bit not set (USART disabled)");
+    return 0;
+  }
+
+  return 1;
+}
+
+/* 3) RX interrupt priming check (verifies HAL_UART_Receive_IT can be started) */
+static uint8_t boot_check_rxit_priming_ok(char *err, size_t err_sz)
+{
+  if (err_sz > 0) err[0] = '\0';
+
+  /* Try to start RX IT once, then immediately abort it.
+   * This verifies the HAL path can arm the interrupt without failing.
+   */
+  if (HAL_UART_Receive_IT(&hlpuart1, (uint8_t *)&rx_byte, 1) != HAL_OK)
+  {
+    snprintf(err, err_sz, "RXIT NOT OK: HAL_UART_Receive_IT failed to start");
+    return 0;
+  }
+
+  /* Abort the receive so main() can start it cleanly afterwards. */
+  (void)HAL_UART_AbortReceive_IT(&hlpuart1);
+
+  return 1;
+}
+
+static void boot_print_banner_and_checks(void)
+{
+  char err[96];
+
+  shell_send_line("");
+  shell_send_line("Signature engravers v1.0");
+  shell_send_line("------------------------");
+
+  /* IRQ check */
+  if (boot_check_irq_ok(err, sizeof(err)))
+  {
+    shell_send_line("IRQ OK");
+  }
+  else
+  {
+    shell_send_line(err);
+  }
+
+  /* USART check */
+  if (boot_check_usart_ok(err, sizeof(err)))
+  {
+    shell_send_line("USART OK");
+  }
+  else
+  {
+    shell_send_line(err);
+  }
+
+  /* RX IT priming check */
+  if (boot_check_rxit_priming_ok(err, sizeof(err)))
+  {
+    shell_send_line("RXIT OK");
+  }
+  else
+  {
+    shell_send_line(err);
+  }
+
+  shell_send_line("BOOT OK");
 }
 /* USER CODE END 0 */
 
@@ -85,46 +215,27 @@ void App_Init(void)
   */
 int main(void)
 {
-  /* USER CODE BEGIN 1 */
-
-  /* USER CODE END 1 */
-
-  /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
   SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_LPUART1_UART_Init();
-  HAL_UART_Transmit(&hlpuart1, (uint8_t *)"BOOT OK\r\n", 9, 100);
+
   /* USER CODE BEGIN 2 */
+  boot_print_banner_and_checks();
+
   App_Init();
 
+  /* Start RX interrupt for real (1 byte at a time) */
   if (HAL_UART_Receive_IT(&hlpuart1, (uint8_t *)&rx_byte, 1) != HAL_OK)
   {
+    shell_send_line("FATAL: HAL_UART_Receive_IT start failed");
     Error_Handler();
   }
   /* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
     fw_gcode_streamer_poll(&g_streamer);
 
     uint8_t out;
@@ -137,10 +248,7 @@ int main(void)
     {
       rx_restart_error = 0;
     }
-    /* USER CODE END 3 */
   }
-
-  /* USER CODE END 3 */
 }
 
 /**
@@ -152,13 +260,8 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Configure the main internal regulator output voltage
-  */
   HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -168,8 +271,6 @@ void SystemClock_Config(void)
     Error_Handler();
   }
 
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
@@ -190,14 +291,6 @@ void SystemClock_Config(void)
   */
 static void MX_LPUART1_UART_Init(void)
 {
-
-  /* USER CODE BEGIN LPUART1_Init 0 */
-
-  /* USER CODE END LPUART1_Init 0 */
-
-  /* USER CODE BEGIN LPUART1_Init 1 */
-
-  /* USER CODE END LPUART1_Init 1 */
   hlpuart1.Instance = LPUART1;
   hlpuart1.Init.BaudRate = 115200;
   hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
@@ -224,10 +317,6 @@ static void MX_LPUART1_UART_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN LPUART1_Init 2 */
-
-  /* USER CODE END LPUART1_Init 2 */
-
 }
 
 /**
@@ -237,45 +326,10 @@ static void MX_LPUART1_UART_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
-
-  /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
-
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
-
-
-
-void shell_send(const char *s)
-{
-  HAL_UART_Transmit(&hlpuart1, (uint8_t *)s, strlen(s), SHELL_TX_TIMEOUT_MS);
-}
-
-void shell_process_line(const char *line)
-{
-  shell_send("\r\n[RX] ");
-  shell_send(line);
-  shell_send("\r\n");
-
-  if (strcmp(line, "$") == 0)
-  {
-    shell_send("status: shell alive\r\nok\r\n");
-  }
-  else if (strcmp(line, "help") == 0)
-  {
-    shell_send("commands: help, $, gcode lines\r\nok\r\n");
-  }
-  else
-  {
-    shell_send("ok\r\n");
-  }
-}
-
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == LPUART1)
@@ -293,34 +347,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 /* USER CODE END 4 */
 
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
   {
   }
-  /* USER CODE END Error_Handler_Debug */
 }
-
-#ifdef  USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
-}
-#endif /* USE_FULL_ASSERT */
