@@ -7,6 +7,8 @@
 
 #include "cnc_hal.h"
 
+static const char FW_IDENTITY[] = "[FW:STM32G4 CNC_machine_Proj]";
+
 static bool line_is_simple_cmd(const char *line, const char *cmd) {
     if (!line || !cmd) {
         return false;
@@ -154,6 +156,11 @@ gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
                                                 size_t response_len) {
     if (!bridge || !line || !response || response_len == 0u) {
         return GCODE_ERR_INVALID_PARAM;
+    }
+
+    if (line_is_simple_cmd(line, "$I")) {
+        snprintf(response, response_len, "%s", FW_IDENTITY);
+        return GCODE_OK;
     }
 
     /* Status query: report current position */
