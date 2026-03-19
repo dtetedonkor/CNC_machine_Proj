@@ -224,6 +224,17 @@ static void test_enable_disable_commands(void) {
     assert(!mock_motor_enabled);
 }
 
+static void test_identity_query_returns_firmware_info(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    char response[64];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$I", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "[FW:STM32G4 CNC_machine_Proj]") == 0);
+}
+
 static void test_invalid_line_returns_error(void) {
     reset_mocks();
     serial_gcode_bridge_t bridge;
@@ -329,6 +340,7 @@ int main(void) {
     printf("Running serial gcode bridge tests...\n");
     test_g0_motion_emits_ok_and_steps();
     test_enable_disable_commands();
+    test_identity_query_returns_firmware_info();
     test_invalid_line_returns_error();
     test_driver_startup_and_mock_gcode_over_uart();
     test_driver_ready_prints_until_host_input();

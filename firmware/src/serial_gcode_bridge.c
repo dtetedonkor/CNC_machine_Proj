@@ -156,6 +156,11 @@ gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
         return GCODE_ERR_INVALID_PARAM;
     }
 
+    if (line_is_simple_cmd(line, "$I")) {
+        snprintf(response, response_len, "[FW:STM32G4 CNC_machine_Proj]");
+        return GCODE_OK;
+    }
+
     /* Status query: report current position */
     if (line_is_simple_cmd(line, "?") || line_is_simple_cmd(line, "$")) {
         float x = 0.0f;
