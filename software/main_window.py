@@ -267,12 +267,14 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
 
         # Choose gcode file
+        self.console_append("[DEBUG] About to open file dialog...")
         gcode_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select G-code file to stream",
             "",
             "G-code Files (*.gcode);;All Files (*)",
         )
+        self.console_append(f"[DEBUG] File dialog returned: {gcode_path!r}")
         if not gcode_path:
             self.console_append("[INFO] Streaming cancelled (no file selected).")
             self.status_label.setText("Idle")
@@ -296,18 +298,19 @@ class MainWindow(QMainWindow):
         lines = list(PREAMBLE) + file_lines
 
         # Ask for port/baud (defaults from config)
-        port, ok = QInputDialog.getText(
-            self, "Serial Port", "Enter COM port (e.g. COM11):", text=PORT
-        )
+        self.console_append("[DEBUG] About to ask for COM port...")
+        port, ok = QInputDialog.getText(self, "Serial Port", "Enter COM port (e.g. COM11):", text=PORT)
+        self.console_append(f"[DEBUG] Port dialog returned ok={ok}, port={port!r}")
+
         if not ok or not port.strip():
             self.console_append("[INFO] Streaming cancelled (no port).")
             self.status_label.setText("Idle")
             return
         port = port.strip()
 
-        baud_str, ok = QInputDialog.getText(
-            self, "Baudrate", "Enter baudrate:", text=str(BAUDRATE)
-        )
+        self.console_append("[DEBUG] About to ask for baudrate...")
+        baud_str, ok = QInputDialog.getText(self, "Baudrate", "Enter baudrate:", text=str(BAUDRATE))
+        self.console_append(f"[DEBUG] Baud dialog returned ok={ok}, baud_str={baud_str!r}")
         if not ok or not baud_str.strip():
             self.console_append("[INFO] Streaming cancelled (no baudrate).")
             self.status_label.setText("Idle")
@@ -331,6 +334,7 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, lambda: self._on_stream_state(state))
 
         def error_cb(err: StreamError) -> None:
+            QTimer.singleShot(0, lambda: self.console_append("[DEBUG] error_cb called"))
             QTimer.singleShot(0, lambda: self._on_stream_error(err))
 
         def log_cb(text: str) -> None:
@@ -338,24 +342,34 @@ class MainWindow(QMainWindow):
             if text.startswith("<<"):
                 QTimer.singleShot(0, lambda: self.console_append(text))
 
-        self._streamer = GrblStreamer(
-            port=port,
-            baudrate=baudrate,
-            lines=lines,
-            state_callback=state_cb,
-            error_callback=error_cb,
-            log_callback=log_cb,
-            startup_drain_time=STARTUP_DRAIN_TIME,
-            timeout_per_line=TIMEOUT_PER_LINE,
-        )
-        self._streamer.start()
+        try:
+            self.console_append("[DEBUG] Creating streamer...")
+            self._streamer = GrblStreamer(
+                port=port,
+                baudrate=baudrate,
+                lines=lines,
+                state_callback=state_cb,
+                error_callback=error_cb,
+                log_callback=log_cb,
+                startup_drain_time=STARTUP_DRAIN_TIME,
+                timeout_per_line=TIMEOUT_PER_LINE,
+            )
+            self.console_append("[DEBUG] Starting streamer thread...")
+            self._streamer.start()
+            self.console_append("[DEBUG] streamer.start() returned")
+        except Exception as e:
+            self.console_append(f"[EXCEPTION] Failed to start streamer: {e!r}")
 
     def _on_stream_state(self, state: StreamState) -> None:
         if state == StreamState.SENDING:
             self.status_label.setText("Streaming — do not unplug")
         elif state == StreamState.DONE:
             self.status_label.setText("Streaming complete")
+            self.console_append("")
+            self.console_append("========== [STREAM] DONE ==========")
             self.console_append("[INFO] Streaming complete.")
+            self.console_append("===================================")
+            self.console_append("")
             self.btn_stream.setEnabled(True)
             self.btn_open.setEnabled(True)
             self.btn_save.setEnabled(bool(self._last_gcode))
