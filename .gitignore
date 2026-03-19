@@ -11,7 +11,7 @@
 build/
 bin/
 _codeql_build_dir/
-
+log/
 # Test outputs
 test/bin/
 test/build/
