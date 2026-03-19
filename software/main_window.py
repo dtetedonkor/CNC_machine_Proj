@@ -29,7 +29,7 @@ GCODE_FILE = "dog.gcode"   # can be "dog.gcode" (if you run from software/), or 
 PORT = "COM12"             # e.g. "COM11" on Windows, "/dev/ttyACM0" on Linux
 BAUDRATE = 115200
 # Optional GRBL/grblHAL preamble:
-PREAMBLE = ["$X", "G21", "G90"]
+PREAMBLE = []
 STARTUP_DRAIN_TIME = 2.0
 TIMEOUT_PER_LINE = 5.0
 # ----------------------------------------------------------
@@ -338,10 +338,7 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, lambda: self._on_stream_error(err))
 
         def log_cb(text: str) -> None:
-            # Only print microcontroller responses
-            if text.startswith("<<"):
-                QTimer.singleShot(0, lambda: self.console_append(text))
-
+            QTimer.singleShot(0, lambda: self.console_append(text))
         try:
             self.console_append("[DEBUG] Creating streamer...")
             self._streamer = GrblStreamer(

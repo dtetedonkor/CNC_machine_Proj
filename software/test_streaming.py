@@ -3,23 +3,48 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import time
+from datetime import datetime
+import argparse
 
 from streaming import GrblStreamer, StreamError, StreamState
 
 
 # ------------------ CONFIG: CHANGE THESE ------------------
-GCODE_FILE = "dog.gcode"   # can be "dog.gcode" (if you run from software/), or an absolute path
-PORT = "COM12"             # e.g. "COM11" on Windows, "/dev/ttyACM0" on Linux
+GCODE_FILE = "output.gcode"  # can be "output.gcode" (if you run from software/), or an absolute path
+PORT = "COM12"              # e.g. "COM11" on Windows, "/dev/ttyACM0" on Linux
 BAUDRATE = 115200
+
 # Optional GRBL/grblHAL preamble:
+# NOTE: This is PREPENDED before the file contents.
+# For debugging connectivity, consider setting PREAMBLE = ["?"] or PREAMBLE = [].
 PREAMBLE = ["$X", "G21", "G90"]
+
 STARTUP_DRAIN_TIME = 2.0
 TIMEOUT_PER_LINE = 5.0
 # ----------------------------------------------------------
 
 
+def _default_log_path() -> Path:
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    here = Path(__file__).resolve().parent
+    return here / "logs" / f"stream-{ts}.log"
+
+
 def main() -> int:
-    gcode_path = Path(GCODE_FILE)
+    ap = argparse.ArgumentParser(description="Standalone GRBL streaming test with file logging.")
+    ap.add_argument("--file", default=GCODE_FILE, help="Path to .gcode file")
+    ap.add_argument("--port", default=PORT, help="COM12 (Windows) or /dev/ttyACM0 (Linux)")
+    ap.add_argument("--baud", type=int, default=BAUDRATE, help="Baudrate (e.g. 115200)")
+    ap.add_argument("--timeout", type=float, default=TIMEOUT_PER_LINE, help="Seconds to wait for OK per line")
+    ap.add_argument("--startup-delay", type=float, default=STARTUP_DRAIN_TIME, help="Delay after opening port")
+    ap.add_argument(
+        "--log-file",
+        default="",
+        help="Optional log file path. If omitted, writes to software/logs/stream-YYYYMMDD-HHMMSS.log",
+    )
+    args = ap.parse_args()
+
+    gcode_path = Path(args.file)
 
     # If user runs this script from a different working directory,
     # try to resolve relative path relative to *this file's* folder.
@@ -46,51 +71,78 @@ def main() -> int:
 
     lines = list(PREAMBLE) + file_lines
 
-    print("----- Standalone GRBL Streaming Test -----")
-    print(f"File: {gcode_path}")
-    print(f"Port: {PORT}")
-    print(f"Baud: {BAUDRATE}")
-    print(f"Preamble: {PREAMBLE}")
-    print("------------------------------------------")
+    log_path = Path(args.log_file) if args.log_file else _default_log_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    log_lines: list[str] = []
+
+    def emit(line: str) -> None:
+        # Print to terminal immediately
+        print(line)
+        # Buffer for file
+        log_lines.append(line)
+
+    def emit_err(line: str) -> None:
+        # Print to terminal immediately
+        print(line, file=sys.stderr)
+        log_lines.append(line)
+
+    emit("----- Standalone GRBL Streaming Test -----")
+    emit(f"File: {gcode_path}")
+    emit(f"Port: {args.port}")
+    emit(f"Baud: {args.baud}")
+    emit(f"Preamble: {PREAMBLE}")
+    emit(f"Startup delay: {args.startup_delay}")
+    emit(f"Timeout per line: {args.timeout}")
+    emit(f"Log file: {log_path}")
+    emit("------------------------------------------")
+
+    had_error = {"value": False}
 
     # Callbacks
     def on_state(state: StreamState) -> None:
-        print(f"[STATE] {state.name}")
+        emit(f"[STATE] {state.name}")
 
     def on_error(err: StreamError) -> None:
+        had_error["value"] = True
         if err.line_index >= 0:
-            print(
-                "\n[ERROR]\n"
-                f"Line {err.line_index + 1}: {err.line_text}\n"
-                f"Controller: {err.raw_line}\n",
-                file=sys.stderr,
-            )
+            emit_err(f"[ERROR] Line {err.line_index + 1}: {err.line_text}")
+            emit_err(f"[ERROR] Controller: {err.raw_line}")
         else:
-            print(f"\n[ERROR]\n{err.raw_line}\n", file=sys.stderr)
+            emit_err(f"[ERROR] {err.raw_line}")
 
     def on_log(text: str) -> None:
         # text is already formatted like ">> ..." or "<< ..."
-        print(text)
+        emit(text)
 
     streamer = GrblStreamer(
-        port=PORT,
-        baudrate=BAUDRATE,
+        port=args.port,
+        baudrate=args.baud,
         lines=lines,
         state_callback=on_state,
         error_callback=on_error,
         log_callback=on_log,
-        startup_drain_time=STARTUP_DRAIN_TIME,
-        timeout_per_line=TIMEOUT_PER_LINE,
+        startup_drain_time=args.startup_delay,
+        timeout_per_line=args.timeout,
     )
 
-    # You can either call streamer.run() (blocking) or streamer.start() (thread).
-    # For a simple standalone script, blocking is easiest:
     streamer.run()
 
     # Give stdout a moment to flush in some terminals
     time.sleep(0.05)
 
-    print("Done.")
+    # Always write the log file at the end
+    try:
+        log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+    except Exception as e:
+        print(f"ERROR: Failed to write log file {log_path}: {e}", file=sys.stderr)
+        return 2
+
+    if had_error["value"]:
+        emit("Done (with errors).")
+        return 1
+
+    emit("Done.")
     return 0
 
 
