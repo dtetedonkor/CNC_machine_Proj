@@ -7,6 +7,8 @@
 
 #include "cnc_hal.h"
 
+static const char FW_IDENTITY[] = "[FW:STM32G4 CNC_machine_Proj]";
+
 static bool line_is_simple_cmd(const char *line, const char *cmd) {
     if (!line || !cmd) {
         return false;
@@ -157,7 +159,7 @@ gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
     }
 
     if (line_is_simple_cmd(line, "$I")) {
-        snprintf(response, response_len, "[FW:STM32G4 CNC_machine_Proj]");
+        snprintf(response, response_len, "%s", FW_IDENTITY);
         return GCODE_OK;
     }
 
