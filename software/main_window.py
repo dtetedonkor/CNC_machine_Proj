@@ -342,17 +342,23 @@ class MainWindow(QMainWindow):
             if text.startswith("<<"):
                 QTimer.singleShot(0, lambda: self.console_append(text))
 
-        self._streamer = GrblStreamer(
-            port=port,
-            baudrate=baudrate,
-            lines=lines,
-            state_callback=state_cb,
-            error_callback=error_cb,
-            log_callback=log_cb,
-            startup_drain_time=STARTUP_DRAIN_TIME,
-            timeout_per_line=TIMEOUT_PER_LINE,
-        )
-        self._streamer.start()
+        try:
+            self.console_append("[DEBUG] Creating streamer...")
+            self._streamer = GrblStreamer(
+                port=port,
+                baudrate=baudrate,
+                lines=lines,
+                state_callback=state_cb,
+                error_callback=error_cb,
+                log_callback=log_cb,
+                startup_drain_time=STARTUP_DRAIN_TIME,
+                timeout_per_line=TIMEOUT_PER_LINE,
+            )
+            self.console_append("[DEBUG] Starting streamer thread...")
+            self._streamer.start()
+            self.console_append("[DEBUG] streamer.start() returned")
+        except Exception as e:
+            self.console_append(f"[EXCEPTION] Failed to start streamer: {e!r}")
 
     def _on_stream_state(self, state: StreamState) -> None:
         if state == StreamState.SENDING:
