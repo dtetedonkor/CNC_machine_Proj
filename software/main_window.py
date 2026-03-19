@@ -24,6 +24,17 @@ from main import ProcessorWorker, PreviewCanvas
 from streaming import GrblStreamer, StreamState, StreamError
 
 
+# ------------------ CONFIG: CHANGE THESE ------------------
+GCODE_FILE = "dog.gcode"   # can be "dog.gcode" (if you run from software/), or an absolute path
+PORT = "COM12"             # e.g. "COM11" on Windows, "/dev/ttyACM0" on Linux
+BAUDRATE = 115200
+# Optional GRBL/grblHAL preamble:
+PREAMBLE = ["$X", "G21", "G90"]
+STARTUP_DRAIN_TIME = 2.0
+TIMEOUT_PER_LINE = 5.0
+# ----------------------------------------------------------
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -96,6 +107,15 @@ class MainWindow(QMainWindow):
     def console_append(self, text: str) -> None:
         self.console.append(text)
         self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+
+    def console_clear(self) -> None:
+        self.console.clear()
+        self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+
+    def _print_streaming_indicators(self) -> None:
+        self.console_append("[STREAM] Indicators:")
+        for s in StreamState:
+            self.console_append(f"  - {s.name}")
 
     # ---------------- SVG / G-code flow ----------------
     def open_svg_dialog(self) -> None:
@@ -239,7 +259,9 @@ class MainWindow(QMainWindow):
 
     # ---------------- Streaming integration ----------------
     def start_streaming(self) -> None:
-        # Immediately show the operator warning when the button is pressed
+        # Clear console and print indicators immediately when button is pressed
+        self.console_clear()
+        self._print_streaming_indicators()
         self.console_append("streaming do not unplug")
         self.status_label.setText("Streaming — do not unplug")
         QApplication.processEvents()
@@ -271,12 +293,11 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Read error", f"Could not read file:\n{e}")
             return
 
-        preamble = ["$X", "G21", "G90"]
-        lines = preamble + file_lines
+        lines = list(PREAMBLE) + file_lines
 
-        # Ask for port/baud
+        # Ask for port/baud (defaults from config)
         port, ok = QInputDialog.getText(
-            self, "Serial Port", "Enter COM port (e.g. COM11):", text="COM11"
+            self, "Serial Port", "Enter COM port (e.g. COM11):", text=PORT
         )
         if not ok or not port.strip():
             self.console_append("[INFO] Streaming cancelled (no port).")
@@ -285,7 +306,7 @@ class MainWindow(QMainWindow):
         port = port.strip()
 
         baud_str, ok = QInputDialog.getText(
-            self, "Baudrate", "Enter baudrate:", text="115200"
+            self, "Baudrate", "Enter baudrate:", text=str(BAUDRATE)
         )
         if not ok or not baud_str.strip():
             self.console_append("[INFO] Streaming cancelled (no baudrate).")
@@ -316,7 +337,7 @@ class MainWindow(QMainWindow):
             # Only print microcontroller responses
             if text.startswith("<<"):
                 QTimer.singleShot(0, lambda: self.console_append(text))
-            
+
         self._streamer = GrblStreamer(
             port=port,
             baudrate=baudrate,
@@ -324,7 +345,8 @@ class MainWindow(QMainWindow):
             state_callback=state_cb,
             error_callback=error_cb,
             log_callback=log_cb,
-            startup_drain_time=2.0,
+            startup_drain_time=STARTUP_DRAIN_TIME,
+            timeout_per_line=TIMEOUT_PER_LINE,
         )
         self._streamer.start()
 
