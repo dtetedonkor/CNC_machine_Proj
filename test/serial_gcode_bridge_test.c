@@ -21,6 +21,7 @@ static char mock_tx_text[512];
 static size_t mock_tx_len = 0u;
 static const size_t TEST_POLL_ITERATIONS_LIMIT = 16u;
 static const size_t GCODE_RESPONSE_MAX_LEN = 80u;
+static const float FLOAT_EPSILON = 0.0001f;
 static const char DRIVER_READY_MSG[] = "CNC ready";
 static const char DRIVER_READY_LINE[] = "CNC ready\r\n";
 static uint32_t mock_motion_backend_calls = 0u;
@@ -269,7 +270,7 @@ static void test_setting_assignment_updates_internal_values(void) {
     gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$100=123.5", response, sizeof(response));
     assert(st == GCODE_OK);
     assert(strcmp(response, "OK") == 0);
-    assert(fabsf(bridge.steps_per_mm[HAL_AXIS_X] - 123.5f) < 0.0001f);
+    assert(fabsf(bridge.steps_per_mm[HAL_AXIS_X] - 123.5f) < FLOAT_EPSILON);
 
     st = serial_gcode_bridge_process_line(&bridge, "$0=9", response, sizeof(response));
     assert(st == GCODE_OK);
@@ -286,11 +287,15 @@ static void test_setting_assignment_rejects_laser_and_invalid_values(void) {
     char response[128];
     gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$32=1", response, sizeof(response));
     assert(st == GCODE_ERR_UNSUPPORTED_CMD);
-    assert(strstr(response, "unsupported setting") != NULL);
+    assert(strstr(response, "unsupported setting $32") != NULL);
 
     st = serial_gcode_bridge_process_line(&bridge, "$100=abc", response, sizeof(response));
     assert(st == GCODE_ERR_INVALID_PARAM);
-    assert(strstr(response, "invalid setting") != NULL);
+    assert(strstr(response, "invalid value for setting $100") != NULL);
+
+    st = serial_gcode_bridge_process_line(&bridge, "$999=1", response, sizeof(response));
+    assert(st == GCODE_ERR_INVALID_PARAM);
+    assert(strstr(response, "unknown setting $999") != NULL);
 }
 
 static void test_driver_startup_and_mock_gcode_over_uart(void) {

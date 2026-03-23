@@ -471,11 +471,19 @@ gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
     const char *setting_value = NULL;
     if (parse_setting_assignment(line, &setting_id, &setting_value)) {
         if (setting_id == 32u) {
-            snprintf(response, response_len, "error: unsupported setting");
+            snprintf(response, response_len, "error: unsupported setting $32");
             return GCODE_ERR_UNSUPPORTED_CMD;
         }
+        setting_type_t parsed_type = SETTING_U32;
+        if (!setting_type_for_id(setting_id, &parsed_type)) {
+            snprintf(response, response_len, "error: unknown setting $%lu", (unsigned long)setting_id);
+            return GCODE_ERR_INVALID_PARAM;
+        }
         if (!set_setting_value(bridge, setting_id, setting_value)) {
-            snprintf(response, response_len, "error: invalid setting");
+            snprintf(response,
+                     response_len,
+                     "error: invalid value for setting $%lu",
+                     (unsigned long)setting_id);
             return GCODE_ERR_INVALID_PARAM;
         }
         snprintf(response, response_len, "OK");
