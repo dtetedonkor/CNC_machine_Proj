@@ -2,8 +2,8 @@
 
 #include <cnc_hal.h>
 #include <stddef.h>
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "gcode.h"
 #include "protocol.h"

@@ -6,11 +6,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "cnc_hal.h"
 
 static const char FW_IDENTITY[] = "[FW:STM32G4 CNC_machine_Proj]";
-static const char *WCS_NAMES[] = {"G54", "G55", "G56", "G57", "G58", "G59"};
+enum { WCS_COUNT = 6 };
+static const char *WCS_NAMES[WCS_COUNT] = {"G54", "G55", "G56", "G57", "G58", "G59"};
+static const size_t SETTING_ID_BUF_SIZE = 8u;
 
 typedef enum {
     SETTING_U32 = 0,
@@ -25,7 +28,7 @@ static bool parse_u32_str(const char *s, uint32_t *out) {
     char *end = NULL;
     errno = 0;
     unsigned long v = strtoul(s, &end, 10);
-    if (errno != 0 || end == s || *end != '\0' || v > 0xFFFFFFFFul) {
+    if (errno != 0 || end == s || *end != '\0' || v > UINT32_MAX) {
         return false;
     }
     *out = (uint32_t)v;
@@ -263,10 +266,10 @@ static bool parse_setting_assignment(const char *line, uint32_t *id_out, const c
         return false;
     }
     const size_t id_len = (size_t)(eq - (line + 1));
-    if (id_len >= 8u) {
+    if (id_len >= SETTING_ID_BUF_SIZE) {
         return false;
     }
-    char id_buf[8];
+    char id_buf[SETTING_ID_BUF_SIZE];
     memcpy(id_buf, line + 1, id_len);
     id_buf[id_len] = '\0';
 
@@ -507,7 +510,7 @@ gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
     }
 
     if (line_is_simple_cmd(line, "$G")) {
-        const char *wcs = WCS_NAMES[bridge->active_wcs_index % 6u];
+        const char *wcs = WCS_NAMES[bridge->active_wcs_index % WCS_COUNT];
         snprintf(response,
                  response_len,
                  "[GC:%s %s %s G94 M5 M9]",
