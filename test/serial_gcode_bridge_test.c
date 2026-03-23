@@ -298,6 +298,102 @@ static void test_setting_assignment_rejects_laser_and_invalid_values(void) {
     assert(strstr(response, "unknown setting $999") != NULL);
 }
 
+static void test_coordinate_offsets_and_modal_state_queries(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    char response[512];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$#", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strstr(response, "[G54:") != NULL);
+    assert(strstr(response, "[G59:") != NULL);
+
+    st = serial_gcode_bridge_process_line(&bridge, "$G", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strstr(response, "[GC:") != NULL);
+    assert(strstr(response, "G54") != NULL);
+    assert(strstr(response, "G21") != NULL);
+    assert(strstr(response, "G90") != NULL);
+}
+
+static void test_startup_lines_show_and_set(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    char response[256];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$N", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strstr(response, "$N0=") != NULL);
+    assert(strstr(response, "$N1=") != NULL);
+
+    st = serial_gcode_bridge_process_line(&bridge, "$N0=G21", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+    st = serial_gcode_bridge_process_line(&bridge, "$N1=G90", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+
+    st = serial_gcode_bridge_process_line(&bridge, "$N", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strstr(response, "$N0=G21") != NULL);
+    assert(strstr(response, "$N1=G90") != NULL);
+}
+
+static void test_check_mode_hold_and_resume_commands(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    char response[128];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$C", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strstr(response, "check mode: ON") != NULL);
+
+    st = serial_gcode_bridge_process_line(&bridge, "G0 X1", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+    assert(mock_pulse_mask_calls == 0u);
+
+    st = serial_gcode_bridge_process_line(&bridge, "!", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+    st = serial_gcode_bridge_process_line(&bridge, "~", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+}
+
+static void test_unlock_homing_and_soft_reset_commands(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    char response[128];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$X", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+
+    st = serial_gcode_bridge_process_line(&bridge, "$H", response, sizeof(response));
+    assert(st == GCODE_ERR_UNSUPPORTED_CMD);
+    assert(strstr(response, "homing disabled") != NULL);
+
+    st = serial_gcode_bridge_process_line(&bridge, "$22=1", response, sizeof(response));
+    assert(st == GCODE_OK);
+    st = serial_gcode_bridge_process_line(&bridge, "G0 X2 Y2", response, sizeof(response));
+    assert(st == GCODE_OK);
+    st = serial_gcode_bridge_process_line(&bridge, "$H", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+
+    char reset_cmd[2];
+    reset_cmd[0] = 0x18;
+    reset_cmd[1] = '\0';
+    st = serial_gcode_bridge_process_line(&bridge, reset_cmd, response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strstr(response, "Grbl reset") != NULL);
+}
+
 static void test_driver_startup_and_mock_gcode_over_uart(void) {
     reset_mocks();
     mock_uart_feed_text("M17\nG0 X1 Y1\nM18\n");
@@ -397,6 +493,10 @@ int main(void) {
     test_settings_dump_contains_required_entries_without_laser();
     test_setting_assignment_updates_internal_values();
     test_setting_assignment_rejects_laser_and_invalid_values();
+    test_coordinate_offsets_and_modal_state_queries();
+    test_startup_lines_show_and_set();
+    test_check_mode_hold_and_resume_commands();
+    test_unlock_homing_and_soft_reset_commands();
     test_driver_startup_and_mock_gcode_over_uart();
     test_driver_ready_prints_until_host_input();
     test_xy_motion_uses_atomic_pulse_mask();

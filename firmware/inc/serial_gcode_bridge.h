@@ -3,8 +3,10 @@
 #include <cnc_hal.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "gcode.h"
+#include "protocol.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +42,11 @@ typedef struct {
 typedef struct {
     gcode_state_t gcode;
     grbl_settings_t settings;
+    bool check_mode_enabled;
+    bool alarm_lock;
+    bool feed_hold;
+    uint8_t active_wcs_index; /* 0..5 => G54..G59 */
+    char startup_lines[2][PROTOCOL_LINE_MAX + 1];
     float steps_per_mm[HAL_AXIS_MAX];
     uint32_t step_pulse_delay_us;
     bool (*motion_backend)(void *ctx,

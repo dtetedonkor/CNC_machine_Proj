@@ -10,6 +10,7 @@
 #include "cnc_hal.h"
 
 static const char FW_IDENTITY[] = "[FW:STM32G4 CNC_machine_Proj]";
+static const char *WCS_NAMES[] = {"G54", "G55", "G56", "G57", "G58", "G59"};
 
 typedef enum {
     SETTING_U32 = 0,
@@ -278,6 +279,29 @@ static bool parse_setting_assignment(const char *line, uint32_t *id_out, const c
     return true;
 }
 
+static bool parse_startup_assignment(const char *line, uint8_t *slot_out, const char **value_out) {
+    if (!line || !slot_out || !value_out || line[0] != '$' || line[1] != 'N') {
+        return false;
+    }
+    if (line[2] != '0' && line[2] != '1') {
+        return false;
+    }
+    if (line[3] != '=' || line[4] == '\0') {
+        return false;
+    }
+    *slot_out = (uint8_t)(line[2] - '0');
+    *value_out = line + 4;
+    return true;
+}
+
+static const char *current_units_word(const serial_gcode_bridge_t *bridge) {
+    return (bridge->gcode.units_mode == GCODE_UNITS_INCH) ? "G20" : "G21";
+}
+
+static const char *current_distance_word(const serial_gcode_bridge_t *bridge) {
+    return (bridge->gcode.coord_mode == GCODE_COORD_RELATIVE) ? "G91" : "G90";
+}
+
 static bool line_is_simple_cmd(const char *line, const char *cmd) {
     if (!line || !cmd) {
         return false;
@@ -430,6 +454,9 @@ void serial_gcode_bridge_init(serial_gcode_bridge_t *bridge) {
     bridge->settings.max_travel_mm[0] = 200.0f;
     bridge->settings.max_travel_mm[1] = 200.0f;
     bridge->settings.max_travel_mm[2] = 50.0f;
+    bridge->active_wcs_index = 0u;
+    bridge->startup_lines[0][0] = '\0';
+    bridge->startup_lines[1][0] = '\0';
 }
 
 void serial_gcode_bridge_set_motion_backend(serial_gcode_bridge_t *bridge,
@@ -464,6 +491,94 @@ gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
 
     if (line_is_simple_cmd(line, "$$")) {
         write_settings_dump(bridge, response, response_len);
+        return GCODE_OK;
+    }
+
+    if (line_is_simple_cmd(line, "$#")) {
+        snprintf(response,
+                 response_len,
+                 "[G54:0.000,0.000,0.000]\n"
+                 "[G55:0.000,0.000,0.000]\n"
+                 "[G56:0.000,0.000,0.000]\n"
+                 "[G57:0.000,0.000,0.000]\n"
+                 "[G58:0.000,0.000,0.000]\n"
+                 "[G59:0.000,0.000,0.000]");
+        return GCODE_OK;
+    }
+
+    if (line_is_simple_cmd(line, "$G")) {
+        const char *wcs = WCS_NAMES[bridge->active_wcs_index % 6u];
+        snprintf(response,
+                 response_len,
+                 "[GC:%s %s %s G94 M5 M9]",
+                 wcs,
+                 current_units_word(bridge),
+                 current_distance_word(bridge));
+        return GCODE_OK;
+    }
+
+    if (line_is_simple_cmd(line, "$N")) {
+        snprintf(response,
+                 response_len,
+                 "$N0=%s\n$N1=%s",
+                 bridge->startup_lines[0][0] ? bridge->startup_lines[0] : "",
+                 bridge->startup_lines[1][0] ? bridge->startup_lines[1] : "");
+        return GCODE_OK;
+    }
+
+    uint8_t startup_slot = 0u;
+    const char *startup_value = NULL;
+    if (parse_startup_assignment(line, &startup_slot, &startup_value)) {
+        snprintf(bridge->startup_lines[startup_slot],
+                 sizeof(bridge->startup_lines[startup_slot]),
+                 "%s",
+                 startup_value);
+        snprintf(response, response_len, "OK");
+        return GCODE_OK;
+    }
+
+    if (line_is_simple_cmd(line, "$C")) {
+        bridge->check_mode_enabled = !bridge->check_mode_enabled;
+        snprintf(response, response_len, "check mode: %s", bridge->check_mode_enabled ? "ON" : "OFF");
+        return GCODE_OK;
+    }
+
+    if (line_is_simple_cmd(line, "$X")) {
+        bridge->alarm_lock = false;
+        snprintf(response, response_len, "OK");
+        return GCODE_OK;
+    }
+
+    if (line_is_simple_cmd(line, "$H")) {
+        if (!bridge->settings.homing_cycle_enable) {
+            snprintf(response, response_len, "error: homing disabled");
+            return GCODE_ERR_UNSUPPORTED_CMD;
+        }
+        bridge->gcode.position_x = 0.0f;
+        bridge->gcode.position_y = 0.0f;
+        bridge->alarm_lock = false;
+        snprintf(response, response_len, "OK");
+        return GCODE_OK;
+    }
+
+    if (line_is_simple_cmd(line, "!")) {
+        bridge->feed_hold = true;
+        snprintf(response, response_len, "OK");
+        return GCODE_OK;
+    }
+
+    if (line_is_simple_cmd(line, "~")) {
+        bridge->feed_hold = false;
+        snprintf(response, response_len, "OK");
+        return GCODE_OK;
+    }
+
+    if (line[0] == 0x18 && line[1] == '\0') {
+        gcode_reset(&bridge->gcode);
+        bridge->feed_hold = false;
+        bridge->check_mode_enabled = false;
+        bridge->alarm_lock = true;
+        snprintf(response, response_len, "Grbl reset");
         return GCODE_OK;
     }
 
@@ -520,6 +635,17 @@ gcode_status_t serial_gcode_bridge_process_line(serial_gcode_bridge_t *bridge,
     float start_x = 0.0f;
     float start_y = 0.0f;
     gcode_get_position(&bridge->gcode, &start_x, &start_y);
+
+    if (bridge->check_mode_enabled) {
+        gcode_block_t parsed;
+        const gcode_status_t parse_status = gcode_parse_line(line, &parsed);
+        if (parse_status != GCODE_OK) {
+            snprintf(response, response_len, "error: %s", gcode_status_string(parse_status));
+            return parse_status;
+        }
+        snprintf(response, response_len, "OK");
+        return GCODE_OK;
+    }
 
     const gcode_status_t status = gcode_process_line(&bridge->gcode, line);
     if (status != GCODE_OK) {
