@@ -9,6 +9,11 @@ This front end loads and previews design files (e.g., **.svg**) and renders them
 Firmware custom built cnc library using **STM32 HAL** for driver development.
 Firmware takes gcode and converts it into pwm motor controls
 
+### Grbl-style settings support
+- `$$` returns supported controller settings (`$0..$132`) for this engraver profile.
+- `$<id>=<value>` updates supported settings at runtime.
+- Laser mode (`$32`) is intentionally unsupported for this non-laser engraver.
+
 ## Firmware Drivers (current modules)
 - `serial_uart` for UART RX/TX transport buffering and line framing
 - `protocol` for line validation and realtime command handling

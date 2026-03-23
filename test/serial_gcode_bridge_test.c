@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -246,6 +247,52 @@ static void test_invalid_line_returns_error(void) {
     assert(strncmp(response, "error:", 6) == 0);
 }
 
+static void test_settings_dump_contains_required_entries_without_laser(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    char response[2048];
+    const gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$$", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strstr(response, "$0=") != NULL);
+    assert(strstr(response, "$132=") != NULL);
+    assert(strstr(response, "$32=") == NULL);
+}
+
+static void test_setting_assignment_updates_internal_values(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    char response[128];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$100=123.5", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+    assert(fabsf(bridge.steps_per_mm[HAL_AXIS_X] - 123.5f) < 0.0001f);
+
+    st = serial_gcode_bridge_process_line(&bridge, "$0=9", response, sizeof(response));
+    assert(st == GCODE_OK);
+    assert(strcmp(response, "OK") == 0);
+    assert(bridge.step_pulse_delay_us == 9u);
+    assert(bridge.settings.step_pulse_time_us == 9u);
+}
+
+static void test_setting_assignment_rejects_laser_and_invalid_values(void) {
+    reset_mocks();
+    serial_gcode_bridge_t bridge;
+    serial_gcode_bridge_init(&bridge);
+
+    char response[128];
+    gcode_status_t st = serial_gcode_bridge_process_line(&bridge, "$32=1", response, sizeof(response));
+    assert(st == GCODE_ERR_UNSUPPORTED_CMD);
+    assert(strstr(response, "unsupported setting") != NULL);
+
+    st = serial_gcode_bridge_process_line(&bridge, "$100=abc", response, sizeof(response));
+    assert(st == GCODE_ERR_INVALID_PARAM);
+    assert(strstr(response, "invalid setting") != NULL);
+}
+
 static void test_driver_startup_and_mock_gcode_over_uart(void) {
     reset_mocks();
     mock_uart_feed_text("M17\nG0 X1 Y1\nM18\n");
@@ -342,6 +389,9 @@ int main(void) {
     test_enable_disable_commands();
     test_identity_query_returns_firmware_info();
     test_invalid_line_returns_error();
+    test_settings_dump_contains_required_entries_without_laser();
+    test_setting_assignment_updates_internal_values();
+    test_setting_assignment_rejects_laser_and_invalid_values();
     test_driver_startup_and_mock_gcode_over_uart();
     test_driver_ready_prints_until_host_input();
     test_xy_motion_uses_atomic_pulse_mask();
