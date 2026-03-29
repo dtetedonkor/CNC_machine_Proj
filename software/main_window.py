@@ -33,6 +33,7 @@ BAUDRATE = 115200
 PREAMBLE = []
 STARTUP_DRAIN_TIME = 2.0
 TIMEOUT_PER_LINE = 5.0
+MAX_CONSOLE_LINES =  300
 # ----------------------------------------------------------
 
 
@@ -112,7 +113,8 @@ class MainWindow(QMainWindow):
         self._last_polylines: Optional[List[List[tuple]]] = None
         self._last_gcode: Optional[List[str]] = None
         self._streamer: Optional[GrblStreamer] = None
-
+        self._preserve_console_output = False
+        self._console_line_count = 0
         # ---------- Stream bridge ----------
         self._stream_bridge = StreamUiBridge()
         self._stream_bridge.log_signal.connect(self._handle_stream_log)
@@ -122,6 +124,13 @@ class MainWindow(QMainWindow):
     # ---------------- Console helper ----------------
     def console_append(self, text: str) -> None:
         self.console.append(text)
+        self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+
+        if not self._preserve_console_output and self._console_line_count >= MAX_CONSOLE_LINES:
+            self.console.clear()
+            self._console_line_count = 0
+            self.console.append("[INFO] Console cleared after 300 lines during streaming...")
+        
         self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
 
     def console_clear(self) -> None:
@@ -327,6 +336,8 @@ class MainWindow(QMainWindow):
     # ---------------- Streaming ----------------
     def start_streaming(self) -> None:
         self.console_clear()
+        self._preserve_console_output = False
+        self._console_line_count = 0
         self._print_streaming_indicators()
         self.console_append("streaming do not unplug")
         self.status_label.setText("Streaming — do not unplug")
@@ -441,6 +452,7 @@ class MainWindow(QMainWindow):
         if state == StreamState.SENDING:
             self.status_label.setText("Streaming — do not unplug")
         elif state == StreamState.DONE:
+            self._preserve_console_output = True
             self.status_label.setText("Streaming complete")
             self.console_append("")
             self.console_append("========== [STREAM] DONE ==========")
@@ -459,8 +471,8 @@ class MainWindow(QMainWindow):
     def _on_stream_error(self, err: StreamError) -> None:
         if err.line_index >= 0:
             self.console_append(
-                f"[ERROR] Line {err.line_index + 1}: {err.line_text}\n"
-                f"Controller: {err.raw_line}"
+                f"[ERROR] Stream failed at line {err.line_index + 1}: {err.line_text}\n"
+                f"Detail: {err.raw_line}"
             )
         else:
             self.console_append(f"[ERROR] {err.raw_line}")
