@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from main import ProcessorWorker, PreviewCanvas
 from streaming import GrblStreamer, StreamState, StreamError
+from svg_parser import write_polylines_to_txt
 
 
 # ------------------ CONFIG: CHANGE THESE ------------------
@@ -279,6 +280,9 @@ class MainWindow(QMainWindow):
                 self.console_append(json.dumps(polylines[:5], indent=2))
             except Exception:
                 self.console_append(str(polylines))
+
+            # Auto-save polylines to polylines.txt next to this script
+            self._save_polylines_to_txt(polylines)
         else:
             self.console_append("Polylines not available from svg_parser.")
 
@@ -307,6 +311,16 @@ class MainWindow(QMainWindow):
         self._last_gcode = None
         self.btn_save.setEnabled(False)
         self.btn_stream.setEnabled(False)
+
+    def _save_polylines_to_txt(self, polylines: List[List[tuple]]) -> None:
+        """Save *polylines* to ``polylines.txt`` in the software directory."""
+        out_path = Path(__file__).resolve().parent / "polylines.txt"
+        image_name = self.current_svg.name if self.current_svg else None
+        try:
+            write_polylines_to_txt(polylines, str(out_path), image_name=image_name)
+            self.console_append(f"[INFO] Polylines saved to: {out_path}")
+        except Exception as exc:
+            self.console_append(f"[ERROR] Failed to save polylines: {exc!r}")
 
     def save_gcode_dialog(self) -> None:
         if not self._last_gcode:

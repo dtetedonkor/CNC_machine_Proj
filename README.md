@@ -47,7 +47,35 @@ The shell waits for commands at the `gcode> ` prompt:
 - Qt-based desktop UI (PySide6)
 - Load and preview **SVG** files on a canvas
 - Modular UI blocks/widgets (easy to extend)
+- **Polyline export** — every time an SVG is processed the extracted polylines are automatically saved to `polylines.txt` in the `software/` directory (see format below).
 - [Add: zoom/pan, grid overlay, layers, export, etc.]
+
+### Polylines export (`software/polylines.txt`)
+
+After each successful SVG load the application writes all detected polylines to
+`software/polylines.txt`.  The file is human-readable plain text:
+
+```
+# Polylines export
+# Timestamp: 2025-01-01 12:00:00
+# Source: dog.svg
+# Polylines: 3
+
+Polyline 0
+10.000,20.500
+11.200,21.000
+END
+
+Polyline 1
+0.000,0.000
+5.000,5.000
+END
+```
+
+- **Header** lines start with `#` and include the export timestamp and source filename.
+- Each polyline block starts with `Polyline <index>` (0-based) and ends with `END`.
+- Point coordinates are written as `x,y` with three decimal places.
+- The file is overwritten on every export.  If writing fails an error is shown in the application console.
 
 ## Tech Stack
 - **Python 3.10+** (or your version)
