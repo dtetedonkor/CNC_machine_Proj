@@ -31,6 +31,9 @@ examples/*
 __pycache__/
 *.pyc
 
+# Generated output files
+software/polylines.txt
+
 # ========================
 # IDE / Editor
 # ========================

@@ -1,6 +1,7 @@
 from svgpathtools import svg2paths2
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
+from datetime import datetime
 
 
 # Sample a single SVG segment into points
@@ -63,27 +64,54 @@ def parse_svg_to_polylines(svg_path: str, resolution: float = 0.5) -> List[List[
 def write_polylines_to_txt(
     polylines: List[List[Tuple[float, float]]],
     output_path: str,
+    image_name: Optional[str] = None,
 ) -> None:
     """
-    Store polyline point data in a text file.
+    Store polyline point data in a human-readable text file.
 
-    Each polyline is written as:
-    Polyline 1
-    x, y
-    x, y
+    File format::
 
-    Polyline 2
-    x, y
-    x, y
+        # Polylines export
+        # Timestamp: 2025-01-01 12:00:00
+        # Source: example.svg
+        # Polylines: 3
+
+        Polyline 0
+        x1,y1
+        x2,y2
+        END
+
+        Polyline 1
+        ...
+        END
+
+    Parameters
+    ----------
+    polylines:
+        List of polylines; each polyline is a list of (x, y) float tuples.
+    output_path:
+        Destination file path.  The parent directory must already exist.
+    image_name:
+        Optional source filename to include in the header (e.g. ``"dog.svg"``).
     """
-    with open(output_path, "w", encoding="utf-8") as fh:
-        for i, polyline in enumerate(polylines, start=1):
-            fh.write(f"Polyline {i}\n")
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            for x, y in polyline:
-                fh.write(f"{x:.3f}, {y:.3f}\n")
+    try:
+        with open(output_path, "w", encoding="utf-8") as fh:
+            # Header
+            fh.write("# Polylines export\n")
+            fh.write(f"# Timestamp: {ts}\n")
+            if image_name:
+                fh.write(f"# Source: {image_name}\n")
+            fh.write(f"# Polylines: {len(polylines)}\n")
 
-            fh.write("\n")
+            for i, polyline in enumerate(polylines):
+                fh.write(f"\nPolyline {i}\n")
+                for x, y in polyline:
+                    fh.write(f"{x:.3f},{y:.3f}\n")
+                fh.write("END\n")
+    except OSError as exc:
+        raise OSError(f"Failed to write polylines to '{output_path}': {exc}") from exc
 
 
 # ----------------------------
@@ -223,12 +251,11 @@ if __name__ == "__main__":
 
     polys = parse_svg_to_polylines(test_svg, resolution=0.5)
 
-    # Write the polyline data to a .txt file next to the SVG input
+    # Write the polyline data to polylines.txt in the same directory as this script
     try:
-        svg_path_obj = Path(test_svg)
-        polyline_out_path = svg_path_obj.with_name(svg_path_obj.stem + "_polylines.txt")
+        polyline_out_path = Path(__file__).resolve().parent / "polylines.txt"
 
-        write_polylines_to_txt(polys, str(polyline_out_path))
+        write_polylines_to_txt(polys, str(polyline_out_path), image_name=Path(test_svg).name)
 
         print(f"Polyline data written to: {polyline_out_path}")
 
