@@ -13,7 +13,9 @@ def sample_segment(segment, resolution: float = 0.5) -> List[Tuple[float, float]
         t = i / num_samples
         z = segment.point(t)
         pts.append((z.real, z.imag))
+
     return pts
+
 
 # Extract polylines from a full path
 def path_to_polylines(path, resolution: float = 0.5) -> List[List[Tuple[float, float]]]:
@@ -39,6 +41,7 @@ def path_to_polylines(path, resolution: float = 0.5) -> List[List[Tuple[float, f
 
     return polylines
 
+
 # Parse an SVG file's paths into list of polylines
 def parse_svg_to_polylines(svg_path: str, resolution: float = 0.5) -> List[List[Tuple[float, float]]]:
     paths, attributes, svg_attr = svg2paths2(svg_path)
@@ -47,29 +50,67 @@ def parse_svg_to_polylines(svg_path: str, resolution: float = 0.5) -> List[List[
     for path, attr in zip(paths, attributes):
         if "d" not in attr:
             continue
+
         polylines = path_to_polylines(path, resolution)
         all_polylines.extend(polylines)
 
     return all_polylines
 
+
+# ----------------------------
+# Added: store polylines -> txt
+# ----------------------------
+def write_polylines_to_txt(
+    polylines: List[List[Tuple[float, float]]],
+    output_path: str,
+) -> None:
+    """
+    Store polyline point data in a text file.
+
+    Each polyline is written as:
+    Polyline 1
+    x, y
+    x, y
+
+    Polyline 2
+    x, y
+    x, y
+    """
+    with open(output_path, "w", encoding="utf-8") as fh:
+        for i, polyline in enumerate(polylines, start=1):
+            fh.write(f"Polyline {i}\n")
+
+            for x, y in polyline:
+                fh.write(f"{x:.3f}, {y:.3f}\n")
+
+            fh.write("\n")
+
+
 # ----------------------------
 # Added: polylines -> G-code
 # ----------------------------
 def _fmt(v: float) -> str:
-    #Format numeric values consistently for G-code (3 decimals).
+    # Format numeric values consistently for G-code
     return f"{v:.3f}"
 
+
 def _dedupe_points(poly: List[Tuple[float, float]], tol: float = 1e-6) -> List[Tuple[float, float]]:
-    """Remove consecutive points that are closer than tol (Euclidean)."""
+    """Remove consecutive points that are closer than tol."""
     import math
+
     if not poly:
         return []
+
     out: List[Tuple[float, float]] = [poly[0]]
+
     for p in poly[1:]:
         last = out[-1]
+
         if math.hypot(p[0] - last[0], p[1] - last[1]) > tol:
             out.append(p)
+
     return out
+
 
 def polylines_to_gcode(
     polylines: List[List[Tuple[float, float]]],
@@ -84,55 +125,64 @@ def polylines_to_gcode(
     include_footer: bool = True,
 ) -> List[str]:
     """
-    Convert polylines -> list of G-code lines.
+    Convert polylines to a list of G-code lines.
 
-    - polylines: list of polylines; each polyline is a list of (x, y) points in machine units (e.g. mm).
-    - safe_z: Z used for rapid travel (positive above work).
-    - cut_z: Z used while cutting (negative plunges).
-    - plunge_feed: feed rate for plunges and cutting (units/min).
-    - travel_feed: feed rate for rapids (used as F on G0 lines for compatibility).
-    - spindle_s: optional S value to emit with M3 (if provided).
+    - polylines: list of polylines; each polyline is a list of (x, y) points.
+    - safe_z: Z used for rapid travel.
+    - cut_z: Z used while cutting.
+    - plunge_feed: feed rate for plunges and cutting.
+    - travel_feed: feed rate for rapid movement.
+    - spindle_s: optional S value to emit with M3.
     - comment: optional top-level comment string.
     - dedupe_tol: consecutive points closer than this are removed.
     - include_header/footer: include standard header/footer lines.
-    Returns a List[str] where each element is one G-code line (no trailing newline).
     """
     lines: List[str] = []
 
     if include_header:
         if comment:
             lines.append(f"({comment})")
-        lines.append("G21")   # mm
-        lines.append("G90")   # absolute coordinates
+
+        lines.append("G21")  # mm
+        lines.append("G90")  # absolute coordinates
         lines.append(f"G0 Z{_fmt(safe_z)}")
+
         if spindle_s is not None:
             lines.append(f"M3 S{int(spindle_s)}")
-            lines.append("G4 P0.1")  # brief dwell to allow spindle/laser to spin up
+            lines.append("G4 P0.1")
 
     for poly in polylines:
         if not poly:
             continue
+
         work_poly = _dedupe_points(poly, dedupe_tol) if dedupe_tol is not None else list(poly)
+
         if len(work_poly) == 0:
             continue
+
         # Move rapid to first point at safe Z
         x0, y0 = work_poly[0]
         lines.append(f"G0 X{_fmt(x0)} Y{_fmt(y0)} F{_fmt(travel_feed)}")
+
         # Plunge to cut depth
         lines.append(f"G1 Z{_fmt(cut_z)} F{_fmt(plunge_feed)}")
-        # Cut along polyline (skip the first point)
-        for (x, y) in work_poly[1:]:
+
+        # Cut along polyline
+        for x, y in work_poly[1:]:
             lines.append(f"G1 X{_fmt(x)} Y{_fmt(y)} F{_fmt(plunge_feed)}")
+
         # Retract
         lines.append(f"G0 Z{_fmt(safe_z)} F{_fmt(travel_feed)}")
 
     if include_footer:
         if spindle_s is not None:
             lines.append("M5")
+
         lines.append("G0 X0 Y0")
         lines.append("M2")
 
     return lines
+
 
 def svg_to_gcode(
     svg_path: str,
@@ -148,10 +198,11 @@ def svg_to_gcode(
     include_footer: bool = True,
 ) -> List[str]:
     """
-    Convenience wrapper: parse svg_path into polylines (using existing parse_svg_to_polylines)
-    and convert them to G-code using polylines_to_gcode.
+    Convenience wrapper: parse svg_path into polylines
+    and convert them to G-code.
     """
     polys = parse_svg_to_polylines(svg_path, resolution=resolution)
+
     return polylines_to_gcode(
         polys,
         safe_z=safe_z,
@@ -165,14 +216,36 @@ def svg_to_gcode(
         include_footer=include_footer,
     )
 
+
 if __name__ == "__main__":
-   
 
     test_svg = "C:/Users/nana1/OneDrive/Desktop/donuts-cake-svgrepo-com.svg"
+
     polys = parse_svg_to_polylines(test_svg, resolution=0.5)
-  
+
+    # Write the polyline data to a .txt file next to the SVG input
+    try:
+        svg_path_obj = Path(test_svg)
+        polyline_out_path = svg_path_obj.with_name(svg_path_obj.stem + "_polylines.txt")
+
+        write_polylines_to_txt(polys, str(polyline_out_path))
+
+        print(f"Polyline data written to: {polyline_out_path}")
+
+    except Exception as e:
+        print("Failed to write polyline data file:", e)
+
     # Generate and print G-code so you can inspect the instructions
-    gcode_lines = polylines_to_gcode(polys, safe_z=5.0, cut_z=-1.0, plunge_feed=150.0, travel_feed=1200.0, spindle_s=800, comment="generated from svg")
+    gcode_lines = polylines_to_gcode(
+        polys,
+        safe_z=5.0,
+        cut_z=-1.0,
+        plunge_feed=150.0,
+        travel_feed=1200.0,
+        spindle_s=800,
+        comment="generated from svg",
+    )
+
     print("\nGenerated G-code (one line per entry):")
     for ln in gcode_lines:
         print(ln)
@@ -181,11 +254,15 @@ if __name__ == "__main__":
     try:
         svg_path_obj = Path(test_svg)
         out_path = svg_path_obj.with_suffix(".gcode")
+
         # Ensure parent directory exists for the output
         out_path.parent.mkdir(parents=True, exist_ok=True)
+
         with open(out_path, "w", encoding="utf-8") as fh:
             for ln in gcode_lines:
                 fh.write(ln + "\n")
+
         print(f"\nG-code written to: {out_path}")
+
     except Exception as e:
         print("Failed to write G-code file:", e)
