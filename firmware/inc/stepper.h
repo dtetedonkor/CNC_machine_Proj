@@ -15,11 +15,11 @@
 
 #pragma once
 
+#include <cnc_hal.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "planner.h"
 #include "kinematics.h"
-#include "hal.h"
 
 #ifdef __cplusplus
 extern "C" {

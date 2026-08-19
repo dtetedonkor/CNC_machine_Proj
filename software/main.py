@@ -1,4 +1,4 @@
-
+# main.py
 from PySide6.QtCore import Signal, QRectF,Qt,QObject
 from PySide6.QtGui import QPainter, QColor, QFont
 from PySide6.QtWidgets import  QSizePolicy,QWidget

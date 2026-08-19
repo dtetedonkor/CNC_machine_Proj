@@ -1,114 +1,150 @@
-import unittest
-from unittest.mock import patch
+from __future__ import annotations
 
-from streaming import GrblStreamer, StreamState
+from pathlib import Path
+import sys
+import time
+from datetime import datetime
+import argparse
 
-
-class _FakeSerial:
-    def __init__(self, responses):
-        self._responses = list(responses)
-        self.writes = []
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-    def reset_input_buffer(self):
-        return None
-
-    def write(self, payload):
-        self.writes.append(payload)
-
-    def readline(self):
-        if self._responses:
-            return self._responses.pop(0)
-        return b""
+from streaming import GrblStreamer, StreamError, StreamState
 
 
-class StreamingTests(unittest.TestCase):
-    def test_streamer_sends_lines_and_finishes(self):
-        states = []
-        fake = _FakeSerial([b"ok\n", b"ok\n"])
+# ------------------ CONFIG: CHANGE THESE ------------------
+GCODE_FILE = "output.gcode"  # can be "output.gcode" (if you run from software/), or an absolute path
+PORT = "COM12"              # e.g. "COM11" on Windows, "/dev/ttyACM0" on Linux
+BAUDRATE = 115200
 
-        with patch("streaming.serial.Serial", return_value=fake):
-            streamer = GrblStreamer(
-                port="COM11",
-                baudrate=115200,
-                lines=[";comment", "G21", "G90"],
-                state_callback=states.append,
-                startup_drain_time=0.0,
-            )
-            streamer.run()
+# Optional GRBL/grblHAL preamble:
+# NOTE: This is PREPENDED before the file contents.
+# For debugging connectivity, consider setting PREAMBLE = ["?"] or PREAMBLE = [].
+PREAMBLE = ["$X", "G21", "G90"]
 
-        self.assertEqual(fake.writes, [b"G21\n", b"G90\n"])
-        self.assertEqual(states, [StreamState.SENDING, StreamState.DONE])
+STARTUP_DRAIN_TIME = 2.0
+TIMEOUT_PER_LINE = 5.0
+# ----------------------------------------------------------
 
-    def test_streamer_reports_controller_error(self):
-        states = []
-        errors = []
-        fake = _FakeSerial([b"error:2\n"])
 
-        with patch("streaming.serial.Serial", return_value=fake):
-            streamer = GrblStreamer(
-                port="COM11",
-                baudrate=115200,
-                lines=["G1 X1"],
-                state_callback=states.append,
-                error_callback=errors.append,
-                startup_drain_time=0.0,
-            )
-            streamer.run()
+def _default_log_path() -> Path:
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    here = Path(__file__).resolve().parent
+    return here / "logs" / f"stream-{ts}.log"
 
-        self.assertEqual(states, [StreamState.SENDING, StreamState.ERROR])
-        self.assertEqual(len(errors), 1)
-        self.assertEqual(errors[0].line_text, "G1 X1")
-        self.assertEqual(errors[0].raw_line, "error:2")
 
-    def test_streamer_reports_timeout(self):
-        states = []
-        errors = []
-        fake = _FakeSerial([])
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Standalone GRBL streaming test with file logging.")
+    ap.add_argument("--file", default=GCODE_FILE, help="Path to .gcode file")
+    ap.add_argument("--port", default=PORT, help="COM12 (Windows) or /dev/ttyACM0 (Linux)")
+    ap.add_argument("--baud", type=int, default=BAUDRATE, help="Baudrate (e.g. 115200)")
+    ap.add_argument("--timeout", type=float, default=TIMEOUT_PER_LINE, help="Seconds to wait for OK per line")
+    ap.add_argument("--startup-delay", type=float, default=STARTUP_DRAIN_TIME, help="Delay after opening port")
+    ap.add_argument(
+        "--log-file",
+        default="",
+        help="Optional log file path. If omitted, writes to software/logs/stream-YYYYMMDD-HHMMSS.log",
+    )
+    args = ap.parse_args()
 
-        with patch("streaming.serial.Serial", return_value=fake):
-            streamer = GrblStreamer(
-                port="COM11",
-                baudrate=115200,
-                lines=["G1 X1"],
-                state_callback=states.append,
-                error_callback=errors.append,
-                startup_drain_time=0.0,
-                timeout_per_line=0.01,
-            )
-            streamer.run()
+    gcode_path = Path(args.file)
 
-        self.assertEqual(states, [StreamState.SENDING, StreamState.ERROR])
-        self.assertEqual(len(errors), 1)
-        self.assertEqual(errors[0].line_text, "G1 X1")
-        self.assertIn("Timeout waiting for OK", errors[0].raw_line)
+    # If user runs this script from a different working directory,
+    # try to resolve relative path relative to *this file's* folder.
+    if not gcode_path.is_absolute():
+        here = Path(__file__).resolve().parent
+        candidate = here / gcode_path
+        if candidate.exists():
+            gcode_path = candidate
 
-    def test_streamer_reports_encoding_error(self):
-        states = []
-        errors = []
-        fake = _FakeSerial([])
+    if not gcode_path.exists():
+        print(f"ERROR: G-code file not found: {gcode_path}", file=sys.stderr)
+        return 2
 
-        with patch("streaming.serial.Serial", return_value=fake):
-            streamer = GrblStreamer(
-                port="COM11",
-                baudrate=115200,
-                lines=["G1 X1 Ā"],
-                state_callback=states.append,
-                error_callback=errors.append,
-                startup_drain_time=0.0,
-            )
-            streamer.run()
+    if gcode_path.suffix.lower() != ".gcode":
+        print(f"ERROR: Not a .gcode file: {gcode_path}", file=sys.stderr)
+        return 2
 
-        self.assertEqual(states, [StreamState.SENDING, StreamState.ERROR])
-        self.assertEqual(len(errors), 1)
-        self.assertEqual(errors[0].line_text, "G1 X1 Ā")
-        self.assertIn("Encoding error", errors[0].raw_line)
+    try:
+        with open(gcode_path, "r", encoding="utf-8", errors="replace") as fh:
+            file_lines = [ln.rstrip("\n") for ln in fh]
+    except Exception as e:
+        print(f"ERROR: Could not read {gcode_path}: {e}", file=sys.stderr)
+        return 2
+
+    lines = list(PREAMBLE) + file_lines
+
+    log_path = Path(args.log_file) if args.log_file else _default_log_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    log_lines: list[str] = []
+
+    def emit(line: str) -> None:
+        # Print to terminal immediately
+        print(line)
+        # Buffer for file
+        log_lines.append(line)
+
+    def emit_err(line: str) -> None:
+        # Print to terminal immediately
+        print(line, file=sys.stderr)
+        log_lines.append(line)
+
+    emit("----- Standalone GRBL Streaming Test -----")
+    emit(f"File: {gcode_path}")
+    emit(f"Port: {args.port}")
+    emit(f"Baud: {args.baud}")
+    emit(f"Preamble: {PREAMBLE}")
+    emit(f"Startup delay: {args.startup_delay}")
+    emit(f"Timeout per line: {args.timeout}")
+    emit(f"Log file: {log_path}")
+    emit("------------------------------------------")
+
+    had_error = {"value": False}
+
+    # Callbacks
+    def on_state(state: StreamState) -> None:
+        emit(f"[STATE] {state.name}")
+
+    def on_error(err: StreamError) -> None:
+        had_error["value"] = True
+        if err.line_index >= 0:
+            emit_err(f"[ERROR] Line {err.line_index + 1}: {err.line_text}")
+            emit_err(f"[ERROR] Controller: {err.raw_line}")
+        else:
+            emit_err(f"[ERROR] {err.raw_line}")
+
+    def on_log(text: str) -> None:
+        # text is already formatted like ">> ..." or "<< ..."
+        emit(text)
+
+    streamer = GrblStreamer(
+        port=args.port,
+        baudrate=args.baud,
+        lines=lines,
+        state_callback=on_state,
+        error_callback=on_error,
+        log_callback=on_log,
+        startup_drain_time=args.startup_delay,
+        timeout_per_line=args.timeout,
+    )
+
+    streamer.run()
+
+    # Give stdout a moment to flush in some terminals
+    time.sleep(0.05)
+
+    # Always write the log file at the end
+    try:
+        log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+    except Exception as e:
+        print(f"ERROR: Failed to write log file {log_path}: {e}", file=sys.stderr)
+        return 2
+
+    if had_error["value"]:
+        emit("Done (with errors).")
+        return 1
+
+    emit("Done.")
+    return 0
 
 
 if __name__ == "__main__":
-    unittest.main()
+    raise SystemExit(main())

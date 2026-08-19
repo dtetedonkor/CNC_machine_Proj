@@ -11,14 +11,14 @@
 build/
 bin/
 _codeql_build_dir/
-
+logs/
 # Test outputs
 test/bin/
 test/build/
 test/build_tmp/
 test/*_test
 !test/*_test.c
-
+.gcode
 # Examples (keep source)
 examples/*
 !examples/*.c

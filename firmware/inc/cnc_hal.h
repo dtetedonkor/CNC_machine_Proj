@@ -19,10 +19,11 @@ extern "C" {
 /* ----------------------------- Common types ----------------------------- */
 
 typedef enum {
-    HAL_OK = 0,
-    HAL_ERR = 1,
-    HAL_BUSY = 2,
-    HAL_TIMEOUT = 3
+	CORE_HAL_OK = 0,
+	CORE_HAL_ERROR = 1,
+	CORE_HAL_BUSY = 2,
+	CORE_HAL_TIMEOUT = 3
+
 } hal_status_t;
 
 typedef enum {

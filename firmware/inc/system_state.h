@@ -18,7 +18,7 @@
 #include "gcode.h"
 #include "planner.h"
 #include "kinematics.h"
-#include "hal.h"
+#include "cnc_hal.h"
 
 #ifdef __cplusplus
 extern "C" {

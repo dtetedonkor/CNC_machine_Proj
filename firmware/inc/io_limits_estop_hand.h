@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "hal.h"
+#include "cnc_hal.h"
 
 #ifdef __cplusplus
 extern "C" {

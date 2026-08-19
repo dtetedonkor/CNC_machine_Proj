@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
 from typing import Any, Optional, List
+from datetime import datetime
 
-from PySide6.QtCore import QThread, QTimer
+from PySide6.QtCore import QThread, QTimer, QObject, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -24,13 +25,34 @@ from main import ProcessorWorker, PreviewCanvas
 from streaming import GrblStreamer, StreamState, StreamError
 
 
+# ------------------ CONFIG: CHANGE THESE ------------------
+GCODE_FILE = "dog.gcode"   # can be "dog.gcode" (if you run from software/), or an absolute path
+PORT = "COM12"             # e.g. "COM11" on Windows, "/dev/ttyACM0" on Linux
+BAUDRATE = 115200
+# Optional GRBL/grblHAL preamble:
+PREAMBLE = []
+STARTUP_DRAIN_TIME = 2.0
+TIMEOUT_PER_LINE = 5.0
+MAX_CONSOLE_LINES =  300
+# ----------------------------------------------------------
+
+
+class StreamUiBridge(QObject):
+    log_signal = Signal(str)
+    state_signal = Signal(object)
+    error_signal = Signal(object)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Signature Engravers Program v1")
+        self.setWindowTitle("Signature Engravers Program Demo")
         self.resize(1100, 700)
 
-        # Top-level layout
+        # Stream logging
+        self._stream_log_path: Optional[Path] = None
+
+        # ---------- Layout ----------
         central = QWidget()
         main_layout = QHBoxLayout()
         central.setLayout(main_layout)
@@ -48,17 +70,16 @@ class MainWindow(QMainWindow):
         file_group = QGroupBox("File")
         fg_layout = QVBoxLayout()
         file_group.setLayout(fg_layout)
+
         self.lbl_file = QLabel("No file selected.")
-        self.btn_open = QPushButton("Open SVG...")
+        self.btn_open = QPushButton("Open SVG.")
         self.btn_open.clicked.connect(self.open_svg_dialog)
 
-        # Save G-code button
-        self.btn_save = QPushButton("Save G-code...")
+        self.btn_save = QPushButton("Save G-code.")
         self.btn_save.setEnabled(False)
         self.btn_save.clicked.connect(self.save_gcode_dialog)
 
-        # Stream button
-        self.btn_stream = QPushButton("Start Streaming...")
+        self.btn_stream = QPushButton("Start Streaming.")
         self.btn_stream.setEnabled(False)
         self.btn_stream.clicked.connect(self.start_streaming)
 
@@ -68,7 +89,7 @@ class MainWindow(QMainWindow):
         fg_layout.addWidget(self.btn_stream)
         right_col.addWidget(file_group)
 
-        # Console / log
+        # Console
         console_group = QGroupBox("Console")
         c_layout = QVBoxLayout()
         console_group.setLayout(c_layout)
@@ -85,30 +106,103 @@ class MainWindow(QMainWindow):
         # Spacer to push controls up
         right_col.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
-        # State
+        # ---------- State ----------
         self.current_svg: Optional[Path] = None
         self._worker: Optional[ProcessorWorker] = None
         self._thread: Optional[QThread] = None
         self._last_polylines: Optional[List[List[tuple]]] = None
         self._last_gcode: Optional[List[str]] = None
         self._streamer: Optional[GrblStreamer] = None
+        self._preserve_console_output = False
+        self._console_line_count = 0
+        # ---------- Stream bridge ----------
+        self._stream_bridge = StreamUiBridge()
+        self._stream_bridge.log_signal.connect(self._handle_stream_log)
+        self._stream_bridge.state_signal.connect(self._handle_stream_state)
+        self._stream_bridge.error_signal.connect(self._handle_stream_error)
 
     # ---------------- Console helper ----------------
     def console_append(self, text: str) -> None:
         self.console.append(text)
         self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
 
+        if not self._preserve_console_output and self._console_line_count >= MAX_CONSOLE_LINES:
+            self.console.clear()
+            self._console_line_count = 0
+            self.console.append("[INFO] Console cleared after 300 lines during streaming...")
+        
+        self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+
+    def console_clear(self) -> None:
+        self.console.clear()
+        self.console.verticalScrollBar().setValue(self.console.verticalScrollBar().maximum())
+
+    def _print_streaming_indicators(self) -> None:
+        self.console_append("[STREAM] Indicators:")
+        for s in StreamState:
+            self.console_append(f"  - {s.name}")
+
+    # ---------------- Stream log helpers ----------------
+    def _init_stream_log(self) -> None:
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self._stream_log_path = Path(__file__).resolve().parent / "logs" / f"stream-{ts}.log"
+        self._stream_log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._stream_log_path.write_text("", encoding="utf-8")
+
+    def _stream_log_append(self, line: str) -> None:
+        if not self._stream_log_path:
+            return
+        try:
+            with open(self._stream_log_path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except Exception as e:
+            # If logging fails, show it immediately (rare)
+            self.console_append(f"[LOG] Failed to write stream log: {e!r}")
+
+    def _dump_stream_log_to_console(self) -> None:
+        if not self._stream_log_path:
+            self.console_append("[LOG] No stream log file set.")
+            return
+        try:
+            contents = self._stream_log_path.read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            self.console_append(f"[LOG] Failed to read log file: {e!r}")
+            return
+
+        self.console_append("")
+        self.console_append("========== [STREAM LOG] ==========")
+        self.console_append(f"[LOG] File: {self._stream_log_path}")
+        for ln in contents.splitlines():
+            self.console_append(ln)
+        self.console_append("==================================")
+        self.console_append("")
+
+    # ---------------- Stream bridge handlers ----------------
+    def _handle_stream_log(self, text: str) -> None:
+        self._stream_log_append(text)
+        self.console_append(text)
+
+    def _handle_stream_state(self, state: StreamState) -> None:
+        self._stream_log_append(f"[STATE] {state.name}")
+        self.console_append(f"[STATE] {state.name}")
+        self._on_stream_state(state)
+
+    def _handle_stream_error(self, err: StreamError) -> None:
+        self._stream_log_append(f"[ERROR] {err.raw_line}")
+        if err.line_index >= 0:
+            self._stream_log_append(f"[ERROR] Line {err.line_index + 1}: {err.line_text}")
+        self._on_stream_error(err)
+
     # ---------------- SVG / G-code flow ----------------
     def open_svg_dialog(self) -> None:
         fname, _ = QFileDialog.getOpenFileName(
-            self, "Open SVG file", "", "SVG Files (*.svg);;All Files (*)"
+            self, "Open SVG file", "", "SVG Files (*.svg);All Files (*)"
         )
         if not fname:
             return
 
         path = Path(fname)
 
-        # Validation
         if path.suffix.lower() != ".svg":
             QMessageBox.warning(self, "Invalid file", "Please select an .svg file.")
             return
@@ -131,25 +225,24 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Update UI, preview, and start processing
         self.current_svg = path
         self.lbl_file.setText(str(path))
+
         try:
             self.preview.load_svg(str(path))
         except Exception:
             self.preview.set_filename(path.name)
-        self.console_append(f"Selected SVG: {path}")
 
+        self.console_append(f"Selected SVG: {path}")
         self.run_processor_worker(str(path))
 
     def run_processor_worker(self, svg_path: str, resolution: float = 0.5) -> None:
-        # Disable open while processing
         self.btn_open.setEnabled(False)
         self.btn_save.setEnabled(False)
         self.btn_stream.setEnabled(False)
 
-        self.status_label.setText("Processing SVG...")
-        self.console_append("Starting SVG -> G-code processing...")
+        self.status_label.setText("Processing SVG.")
+        self.console_append("Starting SVG -> G-code processing.")
 
         self._worker = ProcessorWorker(svg_path, resolution=resolution)
         self._thread = QThread()
@@ -160,7 +253,6 @@ class MainWindow(QMainWindow):
         self._worker.finished.connect(self.on_processing_finished)
         self._worker.error.connect(self.on_processing_error)
 
-        # Clean up thread/worker when done
         self._worker.finished.connect(self._thread.quit)
         self._worker.error.connect(self._thread.quit)
         self._thread.finished.connect(self._thread.deleteLater)
@@ -170,6 +262,7 @@ class MainWindow(QMainWindow):
     def on_processing_finished(self, result: Any) -> None:
         self.btn_open.setEnabled(True)
         self.status_label.setText("SVG processed")
+
         try:
             polylines = result.get("polylines", None) if isinstance(result, dict) else None
             gcode = result.get("gcode", None) if isinstance(result, dict) else None
@@ -195,12 +288,16 @@ class MainWindow(QMainWindow):
                 self.console_append(ln)
             self.btn_save.setEnabled(True)
             self.btn_stream.setEnabled(True)
-            QMessageBox.information(self, "Processing finished", "SVG parsed and G-code generated. See console.")
+            QMessageBox.information(
+                self, "Processing finished", "SVG parsed and G-code generated. See console."
+            )
         else:
             self.console_append("No G-code generated.")
             self.btn_save.setEnabled(False)
             self.btn_stream.setEnabled(False)
-            QMessageBox.information(self, "Processing finished", "SVG parsed but no G-code produced.")
+            QMessageBox.information(
+                self, "Processing finished", "SVG parsed but no G-code produced."
+            )
 
     def on_processing_error(self, message: str) -> None:
         self.btn_open.setEnabled(True)
@@ -215,15 +312,17 @@ class MainWindow(QMainWindow):
         if not self._last_gcode:
             QMessageBox.information(self, "No G-code", "No G-code available to save.")
             return
+
         suggested = "output.gcode"
         fname, _ = QFileDialog.getSaveFileName(
             self,
             "Save G-code",
             suggested,
-            "G-code Files (*.gcode);;All Files (*)",
+            "G-code Files (*.gcode);All Files (*)",
         )
         if not fname:
             return
+
         try:
             with open(fname, "w", encoding="utf-8") as fh:
                 for ln in self._last_gcode:
@@ -232,41 +331,70 @@ class MainWindow(QMainWindow):
             self.console_append(f"G-code saved to {fname}")
         except Exception as e:
             QMessageBox.critical(self, "Save error", f"Could not save file: {e}")
-            self.console_append(f"Failed to save G-code: {e}")
+            self.console_append(f"Save error: {e}")
 
-    # ---------------- Streaming integration ----------------
+    # ---------------- Streaming ----------------
     def start_streaming(self) -> None:
-        """
-        Start streaming the generated G-code to a grblHAL-compatible controller.
-        Uses a preamble + last generated G-code and only reacts to job-level events.
-        """
-        if not self._last_gcode:
-            QMessageBox.information(self, "No G-code", "Generate G-code before starting streaming.")
+        self.console_clear()
+        self._preserve_console_output = False
+        self._console_line_count = 0
+        self._print_streaming_indicators()
+        self.console_append("streaming do not unplug")
+        self.status_label.setText("Streaming — do not unplug")
+        QApplication.processEvents()
+
+        # Choose gcode file
+        self.console_append("[DEBUG] About to open file dialog...")
+        gcode_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select G-code file to stream",
+            "",
+            "G-code Files (*.gcode);All Files (*)",
+        )
+        self.console_append(f"[DEBUG] File dialog returned: {gcode_path!r}")
+        if not gcode_path:
+            self.console_append("[INFO] Streaming cancelled (no file selected).")
+            self.status_label.setText("Idle")
             return
 
-        # Preamble + job G-code
-        preamble = ["$X", "G21", "G90"]
-        lines = preamble + self._last_gcode
+        path = Path(gcode_path)
+        if path.suffix.lower() != ".gcode":
+            QMessageBox.warning(self, "Invalid file", "Please select a .gcode file.")
+            return
+        if not path.exists():
+            QMessageBox.critical(self, "File missing", f"File not found:\n{gcode_path}")
+            return
 
-        # Port (default COM11)
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                file_lines = [ln.rstrip("\n") for ln in fh]
+        except Exception as e:
+            QMessageBox.critical(self, "Read error", f"Could not read file:\n{e}")
+            return
+
+        lines = list(PREAMBLE) + file_lines
+
+        # Ask for port/baud (defaults from config)
+        self.console_append("[DEBUG] About to ask for COM port...")
         port, ok = QInputDialog.getText(
-            self,
-            "Serial Port",
-            "Enter COM port (e.g. COM11):",
-            text="COM11",
+            self, "Serial Port", "Enter COM port (e.g. COM11):", text=PORT
         )
+        self.console_append(f"[DEBUG] Port dialog returned ok={ok}, port={port!r}")
+
         if not ok or not port.strip():
+            self.console_append("[INFO] Streaming cancelled (no port).")
+            self.status_label.setText("Idle")
             return
         port = port.strip()
 
-        # Baudrate (default 115200)
+        self.console_append("[DEBUG] About to ask for baudrate...")
         baud_str, ok = QInputDialog.getText(
-            self,
-            "Baudrate",
-            "Enter baudrate:",
-            text="115200",
+            self, "Baudrate", "Enter baudrate:", text=str(BAUDRATE)
         )
+        self.console_append(f"[DEBUG] Baud dialog returned ok={ok}, baud_str={baud_str!r}")
         if not ok or not baud_str.strip():
+            self.console_append("[INFO] Streaming cancelled (no baudrate).")
+            self.status_label.setText("Idle")
             return
         try:
             baudrate = int(baud_str.strip())
@@ -274,42 +402,64 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Invalid baudrate", "Baudrate must be an integer.")
             return
 
+        # Init log file for this session
+        self._init_stream_log()
+        self._stream_log_append(f"[INFO] File: {path}")
+        self._stream_log_append(f"[INFO] Port: {port}")
+        self._stream_log_append(f"[INFO] Baud: {baudrate}")
+        self._stream_log_append(f"[INFO] Preamble: {PREAMBLE}")
+
         # Lock UI during job
         self.btn_stream.setEnabled(False)
         self.btn_open.setEnabled(False)
         self.btn_save.setEnabled(False)
         self.status_label.setText(f"Connecting to {port}...")
-        self.console_append(f"Starting streaming on {port} @ {baudrate}...")
-        self.console_append("Preamble: " + ", ".join(preamble))
 
-        # Thread-safe wrappers
+        # Worker-thread -> GUI-thread callbacks
         def state_cb(state: StreamState) -> None:
-            QTimer.singleShot(0, lambda: self._on_stream_state(state))
+            self._stream_bridge.state_signal.emit(state)
 
         def error_cb(err: StreamError) -> None:
-            QTimer.singleShot(0, lambda: self._on_stream_error(err))
+            self._stream_bridge.error_signal.emit(err)
 
-        self._streamer = GrblStreamer(
-            port=port,
-            baudrate=baudrate,
-            lines=lines,
-            state_callback=state_cb,
-            error_callback=error_cb,
-            startup_drain_time=2.0,
-        )
-        self._streamer.start()
+        def log_cb(text: str) -> None:
+            self._stream_bridge.log_signal.emit(text)
+
+        try:
+            self.console_append("[DEBUG] Creating streamer...")
+            self._streamer = GrblStreamer(
+                port=port,
+                baudrate=baudrate,
+                lines=lines,
+                state_callback=state_cb,
+                error_callback=error_cb,
+                log_callback=log_cb,
+                startup_drain_time=STARTUP_DRAIN_TIME,
+                timeout_per_line=TIMEOUT_PER_LINE,
+            )
+            self.console_append("[DEBUG] Starting streamer thread...")
+            self._streamer.start()
+            self.console_append("[DEBUG] streamer.start() returned")
+        except Exception as e:
+            self.console_append(f"[EXCEPTION] Failed to start streamer: {e!r}")
+            self._stream_log_append(f"[EXCEPTION] Failed to start streamer: {e!r}")
+            self.status_label.setText("Streaming failed")
+            self.btn_stream.setEnabled(True)
+            self.btn_open.setEnabled(True)
+            self.btn_save.setEnabled(bool(self._last_gcode))
 
     def _on_stream_state(self, state: StreamState) -> None:
         if state == StreamState.SENDING:
-            self.status_label.setText("Streaming in progress…")
+            self.status_label.setText("Streaming — do not unplug")
         elif state == StreamState.DONE:
+            self._preserve_console_output = True
             self.status_label.setText("Streaming complete")
-            self.console_append("G-code streaming completed successfully.")
-            QMessageBox.information(
-                self,
-                "Streaming finished",
-                "G-code was sent successfully to the controller.",
-            )
+            self.console_append("")
+            self.console_append("========== [STREAM] DONE ==========")
+            self.console_append("[INFO] Streaming complete.")
+            self.console_append("===================================")
+            self.console_append("")
+
             self.btn_stream.setEnabled(True)
             self.btn_open.setEnabled(True)
             self.btn_save.setEnabled(bool(self._last_gcode))
@@ -317,25 +467,20 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Streaming failed")
         elif state == StreamState.IDLE:
             self.status_label.setText("Idle")
-            self.btn_stream.setEnabled(True)
-            self.btn_open.setEnabled(True)
-            self.btn_save.setEnabled(bool(self._last_gcode))
 
     def _on_stream_error(self, err: StreamError) -> None:
         if err.line_index >= 0:
-            msg = (
-                f"Streaming failed.\n\n"
-                f"Line {err.line_index + 1}:\n"
-                f"{err.line_text}\n\n"
-                f"Controller response: {err.raw_line}"
+            self.console_append(
+                f"[ERROR] Stream failed at line {err.line_index + 1}: {err.line_text}\n"
+                f"Detail: {err.raw_line}"
             )
         else:
-            msg = f"Streaming failed.\n\n{err.raw_line}"
-        self.console_append("Streaming failed.")
-        QMessageBox.critical(self, "Streaming error", msg)
+            self.console_append(f"[ERROR] {err.raw_line}")
+
         self.btn_stream.setEnabled(True)
         self.btn_open.setEnabled(True)
         self.btn_save.setEnabled(bool(self._last_gcode))
+        self.status_label.setText("Streaming failed")
 
 
 if __name__ == "__main__":
